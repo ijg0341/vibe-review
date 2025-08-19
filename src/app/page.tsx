@@ -1,6 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { ProtectedRoute } from "@/components/auth/protected-route"
+import { UploadModal } from "@/components/upload/upload-modal"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +27,7 @@ import { useTranslation } from "@/lib/translations"
 export default function DashboardPage() {
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
   
   const myStats = [
     {
@@ -147,14 +151,18 @@ export default function DashboardPage() {
   ]
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+    <ProtectedRoute>
+      <DashboardLayout onUploadClick={() => setUploadModalOpen(true)}>
+        <div className="space-y-6">
+        <div className="flex items-center justify-between relative z-10">
           <div>
             <h1 className="text-3xl font-bold">{t.dashboard.title}</h1>
             <p className="text-muted-foreground">{t.dashboard.subtitle}</p>
           </div>
-          <Button>
+          <Button 
+            onClick={() => setUploadModalOpen(true)}
+            className="relative z-50"
+          >
             <Upload className="mr-2 h-4 w-4" />
             {t.dashboard.uploadHistory}
           </Button>
@@ -348,7 +356,13 @@ export default function DashboardPage() {
             </Tabs>
           </CardContent>
         </Card>
-      </div>
-    </DashboardLayout>
+        </div>
+      </DashboardLayout>
+      
+      <UploadModal 
+        open={uploadModalOpen} 
+        onOpenChange={setUploadModalOpen} 
+      />
+    </ProtectedRoute>
   )
 }

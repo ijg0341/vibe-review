@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
+  onUploadClick?: () => void
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, onUploadClick }: DashboardLayoutProps) {
   const [isCollapsed, setIsCollapsed] = React.useState(false)
 
   return (
@@ -17,6 +18,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <Sidebar 
         isCollapsed={isCollapsed} 
         onToggle={() => setIsCollapsed(!isCollapsed)} 
+        onUploadClick={onUploadClick}
       />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />

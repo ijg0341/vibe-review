@@ -23,9 +23,10 @@ import { useTranslation } from "@/lib/translations"
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   isCollapsed: boolean
   onToggle: () => void
+  onUploadClick?: () => void
 }
 
-export function Sidebar({ className, isCollapsed, onToggle }: SidebarProps) {
+export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: SidebarProps) {
   const pathname = usePathname()
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
@@ -125,7 +126,11 @@ export function Sidebar({ className, isCollapsed, onToggle }: SidebarProps) {
 
       {!isCollapsed && (
         <div className="border-t p-4">
-          <Button className="w-full" size="sm">
+          <Button 
+            className="w-full" 
+            size="sm"
+            onClick={onUploadClick}
+          >
             <Upload className="mr-2 h-4 w-4" />
             {t.sidebar.uploadHistory}
           </Button>
