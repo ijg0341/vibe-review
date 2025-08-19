@@ -1,7 +1,13 @@
 # SecondTeam Vibe Review - Project Plan
 
 ## 프로젝트 개요
-Claude Code 사용자들이 `.claude/projects` 폴더에 있는 작업 히스토리를 업로드하고 서로 리뷰할 수 있는 협업 도구
+사내 개발팀이 Claude Code 사용 히스토리(`.claude/projects`)를 공유하고, 서로의 프롬프트 엔지니어링을 리뷰하며 학습할 수 있는 협업 플랫폼
+
+## 프로젝트 목표
+- 팀원 간 프롬프트 엔지니어링 노하우 공유
+- Claude Code 사용 패턴 분석 및 개선
+- 프로젝트별 프롬프트 히스토리 아카이빙
+- 코드 리뷰처럼 프롬프트도 리뷰하는 문화 정착
 
 ## 핵심 기능
 
@@ -9,30 +15,42 @@ Claude Code 사용자들이 `.claude/projects` 폴더에 있는 작업 히스토
 - Supabase Auth를 사용한 이메일/패스워드 인증
 - 소셜 로그인 (Google, GitHub)
 - 사용자 프로필 관리
+- 팀/조직 단위 관리
 
-### 2. 히스토리 업로드 기능
-- `.claude/projects` 폴더 자동 감지
-- 드래그 앤 드롭 파일 업로드
-- 대량 업로드 지원 (여러 프로젝트 동시 업로드)
-- 파일 형식: .jsonl, .html 지원
+### 2. 프롬프트 히스토리 관리
+- `.claude/projects` 폴더 업로드
+- JSONL/HTML 파일 파싱
+- 프로젝트별 자동 분류
+- 주기적 동기화 옵션
 
-### 3. 히스토리 뷰어
-- JSON Lines 파일 파싱 및 렌더링
-- HTML 세션 파일 표시
-- 대화 타임라인 뷰
+### 3. 대시보드 & 통계
+- **개인 통계**
+  - 주/월 단위 프롬프트 작성 현황
+  - 리뷰 주고받은 횟수
+  - 완료율 및 생산성 지표
+- **팀 현황**
+  - 팀원별 진행 중인 프로젝트
+  - 최근 공유된 프롬프트
+  - 인기 있는 프롬프트
+
+### 4. 프롬프트 뷰어
+- 전체 대화 컨텍스트 표시
 - 코드 블록 신택스 하이라이팅
-- 검색 및 필터링 기능
+- 프롬프트-응답 쌍 시각화
+- 타임라인 뷰
+- 검색 및 필터링
 
-### 4. 리뷰 시스템
-- 코드/대화에 대한 코멘트 기능
-- 라인별 피드백
-- 리뷰 스레드
-- 리뷰 상태 관리 (pending, reviewed, resolved)
+### 5. 리뷰 시스템
+- 프롬프트 단위 리뷰
+- 라인별 코멘트
+- 리뷰 스레드 및 토론
+- 리뷰 상태 관리 (pending/resolved)
+- 베스트 프랙티스 마킹
 
-### 5. 실시간 동기화
-- 주기적인 세션 파일 업데이트
-- WebSocket을 통한 실시간 알림
-- 자동 백업 기능
+### 6. 다국어 지원 
+- 한국어/영어 전환
+- 언어별 샘플 데이터
+- 사용자 선호 언어 저장
 
 ## 기술 스택
 
@@ -41,7 +59,8 @@ Claude Code 사용자들이 `.claude/projects` 폴더에 있는 작업 히스토
 - **Styling**: Tailwind CSS v3 + shadcn/ui
 - **Animations**: Framer Motion
 - **State Management**: Zustand
-- **API Client**: Tanstack Query
+- **국제화**: 커스텀 번역 시스템
+- **API Client**: Tanstack Query (예정)
 
 ### Backend & Infrastructure
 - **Database**: Supabase (PostgreSQL)
@@ -58,6 +77,8 @@ Claude Code 사용자들이 `.claude/projects` 폴더에 있는 작업 히스토
 - email (text, unique)
 - username (text, unique)
 - avatar_url (text)
+- preferred_language (text, default: 'ko')
+- team_id (uuid, nullable)
 - created_at (timestamp)
 - updated_at (timestamp)
 
@@ -67,141 +88,110 @@ Claude Code 사용자들이 `.claude/projects` 폴더에 있는 작업 히스토
 - name (text)
 - path (text)
 - description (text)
+- is_public (boolean, default: true)
 - created_at (timestamp)
 - updated_at (timestamp)
 - last_synced_at (timestamp)
 
-#### sessions
+#### prompts
 - id (uuid, primary key)
 - project_id (uuid, foreign key)
-- session_id (text, unique)
-- file_type (enum: 'jsonl', 'html')
-- file_path (text)
-- content (jsonb)
+- session_id (text)
+- prompt_text (text)
+- response_text (text)
+- prompt_order (integer)
+- metadata (jsonb)
 - created_at (timestamp)
-- updated_at (timestamp)
 
 #### reviews
 - id (uuid, primary key)
-- session_id (uuid, foreign key)
+- prompt_id (uuid, foreign key)
 - reviewer_id (uuid, foreign key)
 - content (text)
-- line_number (integer, nullable)
+- rating (integer, 1-5)
 - status (enum: 'pending', 'resolved')
 - created_at (timestamp)
 - updated_at (timestamp)
 
-#### review_threads
+#### review_comments
 - id (uuid, primary key)
 - review_id (uuid, foreign key)
 - user_id (uuid, foreign key)
 - content (text)
 - created_at (timestamp)
 
-## Storage Structure
+## UI 구조
 
-```
-/users/{user_id}/
-  /projects/{project_name}/
-    /sessions/
-      - {session_id}.jsonl
-      - {session_id}.html
-    /metadata.json
-```
+### 페이지 구성
+- **/** - 대시보드 (통계, 최근 활동)
+- **/my-prompts** - 내 프롬프트 목록
+- **/projects** - 팀 프로젝트 탐색
+- **/projects/:id** - 프로젝트 상세 & 프롬프트 목록
+- **/prompt/:id** - 프롬프트 상세 & 리뷰
+- **/reviews** - 리뷰 관리 (받은/준 리뷰)
+- **/upload** - 히스토리 업로드
+- **/team** - 팀 멤버 & 활동
+- **/settings** - 설정
 
-## API Endpoints
+### 주요 컴포넌트
+- **DashboardLayout** - 메인 레이아웃
+- **Sidebar** - 네비게이션 (접기/펼치기)
+- **Header** - 검색, 알림, 언어 전환, 테마 전환
+- **StatsCard** - 통계 카드
+- **ProjectCard** - 프로젝트 카드
+- **PromptViewer** - 프롬프트 뷰어
+- **ReviewPanel** - 리뷰 작성/표시
+- **FileUploader** - 파일 업로드
+- **LanguageToggle** - 언어 전환
+- **ThemeToggle** - 다크모드 전환
 
-### Authentication
-- POST /api/auth/signup
-- POST /api/auth/login
-- POST /api/auth/logout
-- GET /api/auth/user
+## 개발 현황
 
-### Projects
-- GET /api/projects
-- POST /api/projects
-- GET /api/projects/:id
-- PUT /api/projects/:id
-- DELETE /api/projects/:id
-
-### Sessions
-- GET /api/sessions
-- POST /api/sessions/upload
-- GET /api/sessions/:id
-- DELETE /api/sessions/:id
-
-### Reviews
-- GET /api/reviews
-- POST /api/reviews
-- PUT /api/reviews/:id
-- DELETE /api/reviews/:id
-
-## UI Components
-
-### Layout Components
-- Header with navigation
-- Sidebar with project list
-- Main content area
-
-### Feature Components
-- FileUploader
-- SessionViewer
-- CodeBlock with syntax highlighting
-- ReviewPanel
-- CommentThread
-- UserAvatar
-- ProjectCard
-
-### UI Components (shadcn/ui)
-- Button
-- Card
-- Dialog
-- Select
-- Input
-- Textarea
-- Avatar
-- Badge
-- Tabs
-- ScrollArea
-
-## Development Phases
-
-### Phase 1: Foundation (완료)
-- [x] Next.js 프로젝트 설정
+### 완료된 작업 ✅
+- [x] Next.js 프로젝트 초기 설정
 - [x] Tailwind CSS + shadcn/ui 설정
-- [x] 프로젝트 계획 문서 작성
+- [x] 기본 레이아웃 구성 (Sidebar + Header)
+- [x] 다크모드 지원
+- [x] 한글/영어 다국어 지원
+- [x] 대시보드 UI 구현
+- [x] 통계 카드 컴포넌트
+- [x] 팀 프로젝트 목록
+- [x] 리뷰 알림 패널
+- [x] 프롬프트 목록 탭
 
-### Phase 2: Authentication & Base UI
-- [ ] Supabase 프로젝트 설정
-- [ ] 환경변수 구성
-- [ ] 인증 시스템 구현
-- [ ] 기본 레이아웃 구성
+### 진행 중 🔄
+- [ ] Supabase 연동
+- [ ] 실제 파일 업로드 기능
 
-### Phase 3: Core Features
-- [ ] 파일 업로드 컴포넌트
-- [ ] 히스토리 뷰어 구현
-- [ ] 세션 데이터 파싱 로직
-
-### Phase 4: Review System
-- [ ] 리뷰 컴포넌트 개발
-- [ ] 코멘트 시스템
-- [ ] 실시간 업데이트
-
-### Phase 5: Polish & Deploy
-- [ ] 성능 최적화
-- [ ] 에러 핸들링
-- [ ] 배포 준비
+### 예정 작업 📋
+- [ ] 프롬프트 상세 뷰어
+- [ ] 리뷰 작성 인터페이스
+- [ ] 실시간 알림
+- [ ] 검색 & 필터링
+- [ ] 사용자 프로필 페이지
+- [ ] 팀 대시보드
+- [ ] 프롬프트 통계 분석
 
 ## 보안 고려사항
-- Row Level Security (RLS) 정책 설정
-- 파일 업로드 크기 제한
+- Row Level Security (RLS) 정책
+- 파일 업로드 크기 제한 (10MB)
 - Rate limiting
 - Input validation
 - XSS protection
+- 팀 내부 데이터만 접근 가능
 
 ## 성능 최적화
-- 대용량 파일 처리를 위한 스트리밍
-- 가상 스크롤링 (대량 세션 데이터)
+- 대용량 JSONL 파일 스트리밍 파싱
+- 가상 스크롤링 (긴 프롬프트 목록)
 - 이미지 최적화
 - 코드 스플리팅
-- 캐싱 전략
+- 프롬프트 데이터 캐싱
+- Lazy loading
+
+## 향후 계획
+- AI 기반 프롬프트 품질 분석
+- 프롬프트 템플릿 라이브러리
+- 팀 간 프롬프트 공유 마켓플레이스
+- Claude API 사용량 통계
+- 프롬프트 버전 관리
+- 협업 프롬프트 작성 기능

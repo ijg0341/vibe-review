@@ -12,10 +12,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { LanguageToggle } from "@/components/language-toggle"
 import { Bell, Search, User, LogOut, Settings } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { useLocaleStore } from "@/lib/locale-store"
+import { useTranslation } from "@/lib/translations"
 
 export function Header() {
+  const locale = useLocaleStore(state => state.locale)
+  const t = useTranslation(locale)
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-6">
       <div className="flex items-center gap-4">
@@ -23,7 +28,7 @@ export function Header() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
-            placeholder="Search projects, sessions..."
+            placeholder={t.common.search}
             className="h-9 w-64 rounded-md border bg-background pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground focus:border-primary"
           />
         </div>
@@ -37,6 +42,7 @@ export function Header() {
           </Badge>
         </Button>
         
+        <LanguageToggle />
         <ThemeToggle />
 
         <DropdownMenu>
@@ -60,16 +66,16 @@ export function Header() {
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <User className="mr-2 h-4 w-4" />
-              <span>Profile</span>
+              <span>{t.common.profile}</span>
             </DropdownMenuItem>
             <DropdownMenuItem>
               <Settings className="mr-2 h-4 w-4" />
-              <span>Settings</span>
+              <span>{t.common.settings}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <LogOut className="mr-2 h-4 w-4" />
-              <span>Log out</span>
+              <span>{t.common.logout}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

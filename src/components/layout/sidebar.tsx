@@ -12,10 +12,13 @@ import {
   Settings,
   ChevronLeft,
   Plus,
-  History
+  History,
+  Users
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useLocaleStore } from "@/lib/locale-store"
+import { useTranslation } from "@/lib/translations"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   isCollapsed: boolean
@@ -24,35 +27,42 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function Sidebar({ className, isCollapsed, onToggle }: SidebarProps) {
   const pathname = usePathname()
+  const locale = useLocaleStore(state => state.locale)
+  const t = useTranslation(locale)
 
   const routes = [
     {
-      label: "Dashboard",
+      label: t.sidebar.dashboard,
       icon: Home,
       href: "/",
     },
     {
-      label: "Upload",
-      icon: Upload,
-      href: "/upload",
+      label: t.sidebar.myPrompts,
+      icon: History,
+      href: "/my-prompts",
     },
     {
-      label: "Projects",
+      label: t.sidebar.teamProjects,
       icon: FolderOpen,
       href: "/projects",
     },
     {
-      label: "History",
-      icon: History,
-      href: "/history",
-    },
-    {
-      label: "Reviews",
+      label: t.sidebar.reviews,
       icon: MessageSquare,
       href: "/reviews",
     },
     {
-      label: "Settings",
+      label: t.sidebar.upload,
+      icon: Upload,
+      href: "/upload",
+    },
+    {
+      label: t.sidebar.team,
+      icon: Users,
+      href: "/team",
+    },
+    {
+      label: t.sidebar.settings,
       icon: Settings,
       href: "/settings",
     },
@@ -72,7 +82,7 @@ export function Sidebar({ className, isCollapsed, onToggle }: SidebarProps) {
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <span className="text-sm font-bold">V</span>
             </div>
-            <span className="font-semibold">Vibe Review</span>
+            <span className="font-semibold">{t.sidebar.title}</span>
           </div>
         )}
         <Button
@@ -116,8 +126,8 @@ export function Sidebar({ className, isCollapsed, onToggle }: SidebarProps) {
       {!isCollapsed && (
         <div className="border-t p-4">
           <Button className="w-full" size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
+            <Upload className="mr-2 h-4 w-4" />
+            {t.sidebar.uploadHistory}
           </Button>
         </div>
       )}

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { 
   Activity, 
   FolderOpen, 
@@ -13,53 +14,136 @@ import {
   Clock,
   TrendingUp,
   Users,
-  FileText
+  FileText,
+  Eye,
+  ArrowRight
 } from "lucide-react"
+import { useLocaleStore } from "@/lib/locale-store"
+import { useTranslation } from "@/lib/translations"
 
 export default function DashboardPage() {
-  const stats = [
+  const locale = useLocaleStore(state => state.locale)
+  const t = useTranslation(locale)
+  
+  const myStats = [
     {
-      title: "Total Projects",
-      value: "12",
-      description: "Active projects",
-      icon: FolderOpen,
-      trend: "+2 from last week"
-    },
-    {
-      title: "Sessions",
-      value: "248",
-      description: "Total sessions uploaded",
+      title: t.dashboard.stats.thisWeek,
+      value: "24",
+      description: t.dashboard.stats.promptsCreated,
       icon: FileText,
-      trend: "+48 this week"
+      trend: locale === 'ko' ? "+8 지난주 대비" : "+8 from last week"
     },
     {
-      title: "Reviews",
-      value: "36",
-      description: "Pending reviews",
+      title: t.dashboard.stats.thisMonth,
+      value: "156",
+      description: t.dashboard.stats.totalPrompts,
+      icon: Activity,
+      trend: `92% ${t.dashboard.stats.completionRate}`
+    },
+    {
+      title: t.dashboard.stats.reviewsGiven,
+      value: "18",
+      description: t.dashboard.stats.toTeamMembers,
       icon: MessageSquare,
-      trend: "8 new today"
+      trend: `5 ${t.dashboard.stats.thisWeekCount}`
     },
     {
-      title: "Collaborators",
-      value: "8",
-      description: "Active team members",
+      title: t.dashboard.stats.reviewsReceived,
+      value: "12",
+      description: t.dashboard.stats.onYourPrompts,
       icon: Users,
-      trend: "+1 this month"
+      trend: `3 ${t.dashboard.stats.pendingResponse}`
     }
   ]
 
-  const recentProjects = [
-    { name: "secondteam-agent", sessions: 45, lastUpdated: "2 hours ago", status: "active" },
-    { name: "vibework-base", sessions: 23, lastUpdated: "5 hours ago", status: "active" },
-    { name: "careerly-v2", sessions: 67, lastUpdated: "1 day ago", status: "idle" },
-    { name: "shadowcabinet", sessions: 12, lastUpdated: "3 days ago", status: "archived" },
+  const recentTeamProjects = [
+    { 
+      user: locale === 'ko' ? "김철수" : "Alex Kim", 
+      project: locale === 'ko' ? "이커머스 플랫폼" : "E-commerce Platform", 
+      description: locale === 'ko' ? "Stripe 연동 결제 프로세스 구축" : "Building checkout flow with Stripe integration",
+      prompts: 45, 
+      lastUpdate: locale === 'ko' ? "2시간 전" : "2 hours ago",
+      reviewable: true 
+    },
+    { 
+      user: locale === 'ko' ? "이영희" : "Sarah Chen", 
+      project: locale === 'ko' ? "AI 챗봇" : "AI Chatbot", 
+      description: locale === 'ko' ? "고객 지원용 LLM 응답 최적화" : "Fine-tuning LLM responses for customer support",
+      prompts: 23, 
+      lastUpdate: locale === 'ko' ? "5시간 전" : "5 hours ago",
+      reviewable: true 
+    },
+    { 
+      user: locale === 'ko' ? "박민수" : "Mike Johnson", 
+      project: locale === 'ko' ? "데이터 파이프라인" : "Data Pipeline", 
+      description: locale === 'ko' ? "Python을 활용한 ETL 프로세스 최적화" : "ETL process optimization with Python",
+      prompts: 67, 
+      lastUpdate: locale === 'ko' ? "1일 전" : "1 day ago",
+      reviewable: false 
+    },
+    { 
+      user: locale === 'ko' ? "정수진" : "Emma Wilson", 
+      project: locale === 'ko' ? "모바일 앱" : "Mobile App", 
+      description: locale === 'ko' ? "React Native 성능 개선" : "React Native performance improvements",
+      prompts: 12, 
+      lastUpdate: locale === 'ko' ? "2일 전" : "2 days ago",
+      reviewable: true 
+    },
   ]
 
-  const recentActivity = [
-    { type: "upload", user: "You", action: "uploaded 3 sessions", project: "secondteam-agent", time: "10 min ago" },
-    { type: "review", user: "John Doe", action: "reviewed your code", project: "vibework-base", time: "1 hour ago" },
-    { type: "comment", user: "Jane Smith", action: "commented on session", project: "careerly-v2", time: "2 hours ago" },
-    { type: "upload", user: "You", action: "uploaded new session", project: "secondteam-agent", time: "3 hours ago" },
+  const pendingReviews = [
+    { 
+      reviewer: locale === 'ko' ? "김철수" : "Alex Kim", 
+      prompt: locale === 'ko' ? "React에서 Error Boundary를 올바르게 구현하는 방법?" : "How to implement proper error boundaries in React?", 
+      project: locale === 'ko' ? "이커머스 플랫폼" : "E-commerce Platform",
+      time: locale === 'ko' ? "10분 전" : "10 min ago",
+      comment: locale === 'ko' ? "fallback UI가 포함된 ErrorBoundary 컴포넌트 사용을 고려해보세요..." : "Consider using ErrorBoundary component with fallback UI..."
+    },
+    { 
+      reviewer: locale === 'ko' ? "이영희" : "Sarah Chen", 
+      prompt: locale === 'ko' ? "Next.js 14에서 상태 관리 베스트 프랙티스?" : "Best practices for state management in Next.js 14?", 
+      project: locale === 'ko' ? "대시보드 리디자인" : "Dashboard Redesign",
+      time: locale === 'ko' ? "1시간 전" : "1 hour ago",
+      comment: locale === 'ko' ? "Zustand를 사용해보셨나요? Redux보다 가볍습니다..." : "Have you tried Zustand? It's lighter than Redux..."
+    },
+    { 
+      reviewer: locale === 'ko' ? "박민수" : "Mike Johnson", 
+      prompt: locale === 'ko' ? "map 함수에서 async/await가 작동하지 않는 문제 디버깅" : "Debug async/await not working in map function", 
+      project: locale === 'ko' ? "API 통합" : "API Integration",
+      time: locale === 'ko' ? "3시간 전" : "3 hours ago",
+      comment: locale === 'ko' ? "map과 함께 비동기 작업을 하려면 Promise.all()을 사용해야 합니다..." : "You need to use Promise.all() with map for async operations..."
+    },
+  ]
+
+  const recentPrompts = [
+    {
+      user: locale === 'ko' ? "나" : "You",
+      prompt: locale === 'ko' ? "디바운스된 검색 입력을 위한 커스텀 훅 생성" : "Create a custom hook for debounced search input",
+      project: locale === 'ko' ? "검색 기능" : "Search Feature",
+      time: locale === 'ko' ? "1시간 전" : "1 hour ago",
+      reviews: 2
+    },
+    {
+      user: locale === 'ko' ? "김철수" : "Alex Kim",
+      prompt: locale === 'ko' ? "Intersection Observer로 무한 스크롤 구현" : "Implement infinite scroll with intersection observer",
+      project: locale === 'ko' ? "제품 갤러리" : "Product Gallery",
+      time: locale === 'ko' ? "2시간 전" : "2 hours ago",
+      reviews: 3
+    },
+    {
+      user: locale === 'ko' ? "이영희" : "Sarah Chen",
+      prompt: locale === 'ko' ? "GitHub Actions로 CI/CD 파이프라인 구축" : "Set up CI/CD pipeline with GitHub Actions",
+      project: locale === 'ko' ? "DevOps 설정" : "DevOps Setup",
+      time: locale === 'ko' ? "3시간 전" : "3 hours ago",
+      reviews: 1
+    },
+    {
+      user: locale === 'ko' ? "정수진" : "Emma Wilson",
+      prompt: locale === 'ko' ? "React Native FlatList 성능 최적화" : "Optimize React Native FlatList performance",
+      project: locale === 'ko' ? "모바일 앱" : "Mobile App",
+      time: locale === 'ko' ? "5시간 전" : "5 hours ago",
+      reviews: 4
+    },
   ]
 
   return (
@@ -67,17 +151,17 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-muted-foreground">Welcome back! Here's what's happening with your projects.</p>
+            <h1 className="text-3xl font-bold">{t.dashboard.title}</h1>
+            <p className="text-muted-foreground">{t.dashboard.subtitle}</p>
           </div>
           <Button>
             <Upload className="mr-2 h-4 w-4" />
-            Upload Session
+            {t.dashboard.uploadHistory}
           </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => (
+          {myStats.map((stat) => (
             <Card key={stat.title} className="border-border/50">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
@@ -101,31 +185,37 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
           <Card className="col-span-4 border-border/50">
             <CardHeader>
-              <CardTitle>Recent Projects</CardTitle>
-              <CardDescription>Your most recently updated projects</CardDescription>
+              <CardTitle>{t.dashboard.teamProjects.title}</CardTitle>
+              <CardDescription>{t.dashboard.teamProjects.subtitle}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentProjects.map((project) => (
-                  <div key={project.name} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-muted/50">
-                        <FolderOpen className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{project.name}</p>
+                {recentTeamProjects.map((project, index) => (
+                  <div key={index} className="flex items-start justify-between pb-4 border-b last:border-0 last:pb-0">
+                    <div className="flex items-start space-x-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="text-xs">
+                          {project.user.split(' ').map(n => n[0]).join('')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{project.project}</p>
+                          {project.reviewable && (
+                            <Badge variant="outline" className="text-xs">{t.dashboard.teamProjects.openForReview}</Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                          {project.sessions} sessions • {project.lastUpdated}
+                          {project.description}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {project.prompts} {t.dashboard.teamProjects.prompts} • {project.lastUpdate} • {t.dashboard.teamProjects.by} {project.user}
                         </p>
                       </div>
                     </div>
-                    <Badge variant={
-                      project.status === "active" ? "default" : 
-                      project.status === "idle" ? "secondary" : 
-                      "outline"
-                    }>
-                      {project.status}
-                    </Badge>
+                    <Button variant="ghost" size="sm">
+                      <Eye className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -133,30 +223,37 @@ export default function DashboardPage() {
           </Card>
 
           <Card className="col-span-3 border-border/50">
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest updates from your team</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>{t.dashboard.reviewsForYou.title}</CardTitle>
+                <CardDescription>{t.dashboard.reviewsForYou.subtitle}</CardDescription>
+              </div>
+              <Badge variant="destructive" className="text-xs">3 {t.dashboard.reviewsForYou.new}</Badge>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentActivity.map((activity, index) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                      {activity.type === "upload" && <Upload className="h-3 w-3" />}
-                      {activity.type === "review" && <MessageSquare className="h-3 w-3" />}
-                      {activity.type === "comment" && <MessageSquare className="h-3 w-3" />}
+              <div className="space-y-3">
+                {pendingReviews.map((review, index) => (
+                  <div key={index} className="space-y-2 pb-3 border-b last:border-0 last:pb-0">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-xs">
+                            {review.reviewer.split(' ').map(n => n[0]).join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-xs font-medium">{review.reviewer}</p>
+                          <p className="text-xs text-muted-foreground">{review.time}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <p className="text-sm">
-                        <span className="font-medium">{activity.user}</span>{" "}
-                        {activity.action} in{" "}
-                        <span className="font-medium">{activity.project}</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        <Clock className="mr-1 inline-block h-3 w-3" />
-                        {activity.time}
-                      </p>
-                    </div>
+                    <p className="text-xs font-medium line-clamp-1">"{review.prompt}"</p>
+                    <p className="text-xs text-muted-foreground italic line-clamp-2">
+                      {review.comment}
+                    </p>
+                    <Button variant="outline" size="sm" className="h-7 text-xs w-full">
+                      {t.common.viewAndRespond}
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -166,41 +263,86 @@ export default function DashboardPage() {
 
         <Card className="border-border/50">
           <CardHeader>
-            <CardTitle>Session Overview</CardTitle>
-            <CardDescription>Analyze your Claude Code sessions</CardDescription>
+            <CardTitle>{t.dashboard.recentPrompts.title}</CardTitle>
+            <CardDescription>{t.dashboard.recentPrompts.subtitle}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="week" className="space-y-4">
+            <Tabs defaultValue="all" className="space-y-4">
               <TabsList className="grid w-full max-w-md grid-cols-3">
-                <TabsTrigger value="day">Today</TabsTrigger>
-                <TabsTrigger value="week">This Week</TabsTrigger>
-                <TabsTrigger value="month">This Month</TabsTrigger>
+                <TabsTrigger value="all">{t.dashboard.recentPrompts.tabs.all}</TabsTrigger>
+                <TabsTrigger value="reviewed">{t.dashboard.recentPrompts.tabs.reviewed}</TabsTrigger>
+                <TabsTrigger value="mine">{t.dashboard.recentPrompts.tabs.mine}</TabsTrigger>
               </TabsList>
-              <TabsContent value="day" className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-2xl font-bold">8 Sessions</p>
-                    <p className="text-xs text-muted-foreground">Today's activity</p>
-                  </div>
-                  <TrendingUp className="h-8 w-8 text-green-500" />
+              <TabsContent value="all" className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  {recentPrompts.map((prompt, index) => (
+                    <div key={index} className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex items-start space-x-3 flex-1">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs">
+                            {prompt.user === "나" || prompt.user === "You" ? "ME" : prompt.user.split(' ').map(n => n[0]).join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="space-y-1 flex-1">
+                          <p className="text-sm font-medium line-clamp-2">{prompt.prompt}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {prompt.project} • {prompt.time}
+                          </p>
+                          <div className="flex items-center gap-3">
+                            {prompt.reviews > 0 && (
+                              <div className="flex items-center gap-1">
+                                <MessageSquare className="h-3 w-3" />
+                                <span className="text-xs">{prompt.reviews} {t.dashboard.recentPrompts.reviews}</span>
+                              </div>
+                            )}
+                            <Button variant="link" size="sm" className="h-auto p-0 text-xs">
+                              {t.common.viewPrompt} <ArrowRight className="h-3 w-3 ml-1" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </TabsContent>
-              <TabsContent value="week" className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-2xl font-bold">48 Sessions</p>
-                    <p className="text-xs text-muted-foreground">This week's activity</p>
-                  </div>
-                  <Activity className="h-8 w-8 text-blue-500" />
+              <TabsContent value="reviewed" className="space-y-4">
+                <div className="space-y-3">
+                  {recentPrompts
+                    .sort((a, b) => b.reviews - a.reviews)
+                    .slice(0, 3)
+                    .map((prompt, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <Badge className="text-xs">{prompt.reviews}</Badge>
+                          <div>
+                            <p className="text-sm font-medium line-clamp-1">{prompt.prompt}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {prompt.user} • {prompt.project}
+                            </p>
+                          </div>
+                        </div>
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                      </div>
+                    ))}
                 </div>
               </TabsContent>
-              <TabsContent value="month" className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-2xl font-bold">248 Sessions</p>
-                    <p className="text-xs text-muted-foreground">This month's activity</p>
-                  </div>
-                  <TrendingUp className="h-8 w-8 text-green-500" />
+              <TabsContent value="mine" className="space-y-4">
+                <div className="space-y-3">
+                  {recentPrompts
+                    .filter(p => p.user === "나" || p.user === "You")
+                    .map((prompt, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                          <p className="text-sm font-medium line-clamp-1">{prompt.prompt}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {prompt.project} • {prompt.time}
+                          </p>
+                        </div>
+                        <Badge variant={prompt.reviews > 0 ? "default" : "outline"} className="text-xs">
+                          {prompt.reviews} {t.dashboard.recentPrompts.reviews}
+                        </Badge>
+                      </div>
+                    ))}
                 </div>
               </TabsContent>
             </Tabs>
