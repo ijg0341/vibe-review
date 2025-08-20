@@ -17,6 +17,7 @@ import { useLocaleStore } from '@/lib/locale-store'
 import { useTranslation } from '@/lib/translations'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/auth-context'
+import { JSONLProcessor } from '@/lib/jsonl-processor'
 import { 
   FolderOpen, 
   Upload, 
@@ -389,24 +390,60 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
             } else if (uploadData) {
               console.log('Project metadata saved:', uploadData)
               
-              // 2. uploaded_files 테이블에 개별 파일 정보 저장
-              const fileRecords = uploadedFiles.map(file => ({
-                user_id: user.id,
-                upload_id: uploadData.id,
-                file_name: file.name,
-                file_path: `${user.id}/${file.path}/${file.name}`,
-                uploaded_at: new Date().toISOString()
-              }))
+              // 2. uploaded_files 테이블에 개별 파일 정보 저장 및 JSONL 처리
+              const jsonlProcessor = new JSONLProcessor()
               
-              const { error: filesError } = await supabase
-                .from('uploaded_files')
-                .insert(fileRecords)
-              
-              if (filesError) {
-                console.error('File records save error:', filesError)
-              } else {
-                console.log('File records saved successfully')
+              for (const file of uploadedFiles) {
+                const filePath = `${user.id}/${file.path}/${file.name}`
+                
+                // 파일 정보 DB에 저장
+                const { data: fileData, error: fileError } = await supabase
+                  .from('uploaded_files')
+                  .insert({
+                    user_id: user.id,
+                    upload_id: uploadData.id,
+                    file_name: file.name,
+                    file_path: filePath,
+                    uploaded_at: new Date().toISOString(),
+                    processing_status: 'pending'
+                  })
+                  .select()
+                  .single()
+                
+                if (fileError) {
+                  console.error('File record save error:', fileError)
+                  continue
+                }
+                
+                // Storage에서 파일 내용 가져오기
+                try {
+                  const { data: fileContent, error: downloadError } = await supabase.storage
+                    .from('session-files')
+                    .download(filePath)
+                  
+                  if (downloadError) {
+                    console.error('Error downloading file for processing:', downloadError)
+                    continue
+                  }
+                  
+                  // 파일 내용을 텍스트로 변환
+                  const text = await fileContent.text()
+                  
+                  // JSONL 파싱 및 DB 저장 (백그라운드에서 처리)
+                  jsonlProcessor.processJSONLFile(text, fileData.id, uploadData.id)
+                    .then(result => {
+                      console.log(`JSONL processing result for ${file.name}:`, result)
+                    })
+                    .catch(error => {
+                      console.error(`JSONL processing error for ${file.name}:`, error)
+                    })
+                    
+                } catch (error) {
+                  console.error('Error processing file:', error)
+                }
               }
+              
+              console.log('File records saved and JSONL processing initiated')
             }
             
           } catch (metadataError) {

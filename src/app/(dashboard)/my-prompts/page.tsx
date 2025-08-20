@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/auth-context'
 import { useLocaleStore } from '@/lib/locale-store'
@@ -20,10 +21,8 @@ import {
   Folder,
   Eye,
   Upload,
-  Clock,
-  ArrowRight
+  Clock
 } from 'lucide-react'
-import { FileViewerModal } from '@/components/file-viewer/file-viewer-modal'
 
 interface Upload {
   id: string
@@ -32,6 +31,7 @@ interface Upload {
   session_count: number
   uploaded_at: string
   files?: UploadedFile[]
+  last_modified?: string // 가장 최근 파일의 수정일
 }
 
 interface UploadedFile {
@@ -46,9 +46,9 @@ export default function MyPromptsPage() {
   const [filteredUploads, setFilteredUploads] = useState<Upload[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
-  const [selectedFile, setSelectedFile] = useState<{ path: string; name: string } | null>(null)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   
+  const router = useRouter()
   const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
@@ -82,9 +82,15 @@ export default function MyPromptsPage() {
             .eq('upload_id', upload.id)
             .order('uploaded_at', { ascending: false })
 
+          // 가장 최근 파일의 uploaded_at을 last_modified로 사용
+          const lastModified = filesData && filesData.length > 0 
+            ? filesData[0].uploaded_at 
+            : upload.uploaded_at
+
           return {
             ...upload,
-            files: filesData || []
+            files: filesData || [],
+            last_modified: lastModified
           }
         })
       )
@@ -118,20 +124,13 @@ export default function MyPromptsPage() {
     fetchUploads()
   }, [user?.id])
 
-  // 파일 내용 보기
-  const viewFileContent = (filePath: string, fileName: string) => {
-    setSelectedFile({ path: filePath, name: fileName })
-  }
-
-  // 날짜 포맷팅
+  // 날짜 포맷팅 (YYYY-MM-DD 형식)
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', {
       year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      month: '2-digit',
+      day: '2-digit'
     })
   }
 
@@ -199,7 +198,7 @@ export default function MyPromptsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {uploads.length > 0 ? formatDate(uploads[0].uploaded_at).split(' ')[0] : '-'}
+                  {uploads.length > 0 ? formatDate(uploads[0].uploaded_at) : '-'}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {uploads.length > 0 ? uploads[0].project_name : (locale === 'ko' ? '업로드 없음' : 'No uploads')}
@@ -273,58 +272,43 @@ export default function MyPromptsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredUploads.map((upload) => (
-                    <div key={upload.id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex items-start space-x-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="text-xs">
-                            <Folder className="h-4 w-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="space-y-1">
+                    <Card 
+                      key={upload.id} 
+                      className="hover:shadow-lg transition-shadow cursor-pointer"
+                      onClick={() => router.push(`/my-prompts/${upload.id}`)}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="text-xs">
+                              <Folder className="h-4 w-4" />
+                            </AvatarFallback>
+                          </Avatar>
+                          <Badge variant="secondary" className="text-xs">
+                            {upload.session_count} {locale === 'ko' ? '세션' : 'sessions'}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <h3 className="font-semibold text-lg truncate" title={upload.project_name}>
+                          {upload.project_name}
+                        </h3>
+                        <div className="space-y-1 text-sm text-muted-foreground">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium">{upload.project_name}</p>
-                            <Badge variant="secondary" className="text-xs">
-                              {upload.session_count} {locale === 'ko' ? '파일' : 'files'}
-                            </Badge>
+                            <FileText className="h-3 w-3" />
+                            <span>{upload.files?.length || 0} {locale === 'ko' ? '파일' : 'files'}</span>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {locale === 'ko' ? '업로드됨' : 'Uploaded'} • {formatDate(upload.uploaded_at)}
-                          </p>
-                          <div className="flex items-center gap-3">
-                            {upload.files && upload.files.length > 0 && (
-                              <div className="flex items-center gap-1">
-                                <FileText className="h-3 w-3" />
-                                <span className="text-xs">{upload.files.length} {locale === 'ko' ? '세션' : 'sessions'}</span>
-                              </div>
-                            )}
-                            <Button variant="link" size="sm" className="h-auto p-0 text-xs">
-                              {locale === 'ko' ? '프로젝트 보기' : 'View Project'} <ArrowRight className="h-3 w-3 ml-1" />
-                            </Button>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-3 w-3" />
+                            <span>
+                              {locale === 'ko' ? '최근 수정' : 'Last modified'}: {formatDate(upload.last_modified || upload.uploaded_at)}
+                            </span>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {upload.files?.slice(0, 3).map((file) => (
-                          <Button
-                            key={file.id}
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => viewFileContent(file.file_path, file.file_name)}
-                            className="text-xs"
-                          >
-                            <Eye className="h-3 w-3 mr-1" />
-                            {file.file_name.length > 20 ? file.file_name.substring(0, 20) + '...' : file.file_name}
-                          </Button>
-                        ))}
-                        {upload.files && upload.files.length > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{upload.files.length - 3} {locale === 'ko' ? '개 더' : 'more'}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               )}
@@ -333,20 +317,11 @@ export default function MyPromptsPage() {
         </div>
       </DashboardLayout>
 
-      {/* 모달들 */}
+      {/* 업로드 모달 */}
       <UploadModal 
         open={uploadModalOpen} 
         onOpenChange={setUploadModalOpen} 
       />
-      
-      {selectedFile && (
-        <FileViewerModal
-          open={!!selectedFile}
-          onOpenChange={(open) => !open && setSelectedFile(null)}
-          filePath={selectedFile.path}
-          fileName={selectedFile.name}
-        />
-      )}
     </ProtectedRoute>
   )
 }
