@@ -36,11 +36,11 @@ export const SessionViewer: React.FC<SessionViewerProps> = ({
       
       // Claude 메시지 타입에 맞게 렌더링
       if (messageType === 'user') {
-        return <UserMessage key={line.id} data={data as ClaudeMessage} locale={locale} />
+        return <UserMessage key={line.id} data={data as any} locale={locale} />
       }
       
       if (messageType === 'assistant') {
-        return <AssistantMessage key={line.id} data={data as ClaudeMessage} locale={locale} />
+        return <AssistantMessage key={line.id} data={data as any} locale={locale} />
       }
       
       // 알 수 없는 타입은 기본 렌더링

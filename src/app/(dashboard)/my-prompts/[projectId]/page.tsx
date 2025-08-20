@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/auth-context'
@@ -25,7 +25,13 @@ import {
   ChevronRight,
   AlertCircle,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Filter,
+  User,
+  Bot,
+  Terminal,
+  Brain,
+  Wrench
 } from 'lucide-react'
 import { SessionViewerV2 } from '@/components/session-viewer/SessionViewerV2'
 
@@ -72,8 +78,11 @@ export default function ProjectDetailPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalLines, setTotalLines] = useState(0)
-  const [viewMode, setViewMode] = useState<'structured' | 'raw'>('structured')
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [messageTypeFilter, setMessageTypeFilter] = useState<string[]>([]) // 빈 배열 = 모두 표시
+  const [allSessionLines, setAllSessionLines] = useState<SessionLine[]>([]) // 필터링 전 전체 데이터
   
   const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
@@ -130,26 +139,32 @@ export default function ProjectDetailPage() {
     }
   }
 
-  // 세션 라인 조회 (페이지네이션)
-  const fetchSessionLines = async (fileId: string, page: number = 1, search?: string) => {
+  // 세션 라인 조회 (무한 스크롤)
+  const fetchSessionLines = async (fileId: string, page: number = 1, search?: string, append: boolean = false) => {
     try {
-      setLinesLoading(true)
-      
-      // 먼저 총 라인 수와 페이지 정보 가져오기
-      const { data: infoData, error: infoError } = await supabase
-        .rpc('get_session_lines_info', {
-          p_file_id: fileId,
-          p_search: search || null
-        })
-      
-      if (infoError) {
-        console.error('Error fetching lines info:', infoError)
-        return
+      if (!append) {
+        setLinesLoading(true)
+      } else {
+        setIsLoadingMore(true)
       }
       
-      if (infoData && infoData.length > 0) {
-        setTotalLines(infoData[0].total_lines)
-        setTotalPages(infoData[0].total_pages)
+      // 먼저 총 라인 수와 페이지 정보 가져오기
+      if (page === 1) {
+        const { data: infoData, error: infoError } = await supabase
+          .rpc('get_session_lines_info', {
+            p_file_id: fileId,
+            p_search: search || null
+          })
+        
+        if (infoError) {
+          console.error('Error fetching lines info:', infoError)
+          return
+        }
+        
+        if (infoData && infoData.length > 0) {
+          setTotalLines(infoData[0].total_lines)
+          setTotalPages(infoData[0].total_pages)
+        }
       }
       
       // 실제 라인 데이터 가져오기
@@ -163,24 +178,91 @@ export default function ProjectDetailPage() {
       
       if (error) {
         console.error('Error fetching session lines:', error)
-        setSessionLines([])
+        if (!append) setSessionLines([])
         return
       }
       
-      setSessionLines(data || [])
+      if (data) {
+        if (append) {
+          setAllSessionLines(prev => [...prev, ...data])
+          setSessionLines(prev => [...prev, ...data])
+        } else {
+          setAllSessionLines(data)
+          setSessionLines(data)
+        }
+        setHasMore(data.length === ITEMS_PER_PAGE && page < totalPages)
+      } else {
+        if (!append) {
+          setAllSessionLines([])
+          setSessionLines([])
+        }
+        setHasMore(false)
+      }
+      
       setCurrentPage(page)
     } catch (error) {
       console.error('Error in fetchSessionLines:', error)
-      setSessionLines([])
+      if (!append) setSessionLines([])
     } finally {
       setLinesLoading(false)
+      setIsLoadingMore(false)
+    }
+  }
+  
+  // 더 많은 데이터 로드
+  const loadMore = () => {
+    if (!isLoadingMore && hasMore && selectedFile) {
+      fetchSessionLines(selectedFile.id, currentPage + 1, searchQuery, true)
     }
   }
 
+  // 메시지 타입 추출 함수
+  const getMessageType = (line: SessionLine): string => {
+    const data = line.content || {}
+    
+    if (data.type === 'user') {
+      const content = data.message?.content
+      if (Array.isArray(content) && content.some(item => item.type === 'tool_result')) {
+        return 'tool_result'
+      }
+      return 'user_text'
+    }
+    
+    if (data.type === 'assistant') {
+      const content = data.message?.content
+      if (Array.isArray(content)) {
+        if (content.some(item => item.type === 'thinking')) return 'thinking'
+        if (content.some(item => item.type === 'tool_use')) return 'tool_use'
+        if (content.some(item => item.type === 'text')) return 'assistant_text'
+      }
+    }
+    
+    return 'other'
+  }
+  
+  // 필터링 effect
+  useEffect(() => {
+    if (messageTypeFilter.length === 0) {
+      // 필터가 없으면 전체 표시
+      setSessionLines(allSessionLines)
+    } else {
+      // 필터링 적용
+      const filtered = allSessionLines.filter(line => {
+        const type = getMessageType(line)
+        return messageTypeFilter.includes(type)
+      })
+      setSessionLines(filtered)
+    }
+  }, [messageTypeFilter, allSessionLines])
+  
   // 파일 선택 시 세션 라인 로드
   useEffect(() => {
     if (selectedFile?.id) {
       setCurrentPage(1)
+      setHasMore(true)
+      setSessionLines([])
+      setAllSessionLines([])
+      setMessageTypeFilter([]) // 필터 초기화
       fetchSessionLines(selectedFile.id, 1, searchQuery)
     }
   }, [selectedFile?.id])
@@ -191,6 +273,8 @@ export default function ProjectDetailPage() {
     
     const timer = setTimeout(() => {
       setCurrentPage(1)
+      setHasMore(true)
+      setSessionLines([])
       fetchSessionLines(selectedFile.id, 1, searchQuery)
     }, 500)
     
@@ -225,7 +309,7 @@ export default function ProjectDetailPage() {
   const ProcessingStatusBadge = ({ status, processedLines }: { status?: string; processedLines?: number }) => {
     if (status === 'completed') {
       return (
-        <Badge variant="success" className="text-xs">
+        <Badge variant="default" className="text-xs">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           {processedLines} lines
         </Badge>
@@ -285,28 +369,26 @@ export default function ProjectDetailPage() {
           <Header />
           <main className="flex-1 overflow-hidden bg-muted/10">
             <div className="flex flex-col h-full">
-              {/* 헤더 */}
-              <div className="flex items-center justify-between p-4 border-b bg-background">
-            <div className="flex items-center gap-4">
+              {/* 컴팩트한 헤더 */}
+              <div className="flex items-center justify-between px-4 py-2 border-b bg-background">
+            <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="sm"
+                className="h-7 px-2"
                 onClick={() => router.push('/my-prompts')}
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                {locale === 'ko' ? '돌아가기' : 'Back'}
+                <ArrowLeft className="h-3 w-3 mr-1" />
+                {locale === 'ko' ? '뒤로' : 'Back'}
               </Button>
-              <div>
-                <h1 className="text-2xl font-bold">{project?.project_name}</h1>
-                <p className="text-sm text-muted-foreground">
-                  {sessionFiles.length} {locale === 'ko' ? '개의 세션 파일' : 'session files'}
-                </p>
+              <div className="flex items-center gap-2">
+                <Folder className="h-4 w-4 text-muted-foreground" />
+                <h1 className="text-base font-semibold">{project?.project_name}</h1>
+                <span className="text-sm text-muted-foreground">
+                  ({sessionFiles.length} files)
+                </span>
               </div>
             </div>
-            <Badge variant="secondary">
-              <Folder className="h-3 w-3 mr-1" />
-              {locale === 'ko' ? '프로젝트' : 'Project'}
-            </Badge>
               </div>
 
               <div className="flex flex-1 overflow-hidden">
@@ -364,51 +446,119 @@ export default function ProjectDetailPage() {
 
             {/* 세션 내용 뷰어 - 오른쪽 메인 영역 */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-4 border-b">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold">
-                      {selectedFile ? selectedFile.file_name : (locale === 'ko' ? '세션 내용' : 'Session Content')}
-                    </h2>
-                    {selectedFile && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {locale === 'ko' ? `${totalLines}개 라인` : `${totalLines} lines`} • 
-                        {locale === 'ko' ? ` ${totalPages}페이지` : ` ${totalPages} pages`}
-                      </p>
-                    )}
-                  </div>
-                  {selectedFile && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant={viewMode === 'structured' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setViewMode('structured')}
-                      >
-                        {locale === 'ko' ? '구조화' : 'Structured'}
-                      </Button>
-                      <Button
-                        variant={viewMode === 'raw' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setViewMode('raw')}
-                      >
-                        {locale === 'ko' ? '원본' : 'Raw'}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
               <div className="flex-1 flex flex-col overflow-hidden p-4">
                 {selectedFile ? (
                   <div className="flex flex-col h-full">
-                    {/* 검색 바 */}
-                    <div className="relative mb-4">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder={locale === 'ko' ? '내용 검색...' : 'Search content...'}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10"
-                      />
+                    {/* 검색 바와 필터 */}
+                    <div className="space-y-3 mb-4">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder={locale === 'ko' ? '내용 검색...' : 'Search content...'}
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                      
+                      {/* 메시지 타입 필터 버튼들 */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Filter className="h-3 w-3" />
+                          {locale === 'ko' ? '필터:' : 'Filter:'}
+                        </span>
+                        
+                        <Button
+                          variant={messageTypeFilter.includes('user_text') ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setMessageTypeFilter(prev => 
+                              prev.includes('user_text') 
+                                ? prev.filter(t => t !== 'user_text')
+                                : [...prev, 'user_text']
+                            )
+                          }}
+                        >
+                          <User className="h-3 w-3 mr-1" />
+                          {locale === 'ko' ? '사용자' : 'User'}
+                        </Button>
+                        
+                        <Button
+                          variant={messageTypeFilter.includes('assistant_text') ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setMessageTypeFilter(prev => 
+                              prev.includes('assistant_text') 
+                                ? prev.filter(t => t !== 'assistant_text')
+                                : [...prev, 'assistant_text']
+                            )
+                          }}
+                        >
+                          <Bot className="h-3 w-3 mr-1" />
+                          Claude
+                        </Button>
+                        
+                        <Button
+                          variant={messageTypeFilter.includes('tool_use') ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setMessageTypeFilter(prev => 
+                              prev.includes('tool_use') 
+                                ? prev.filter(t => t !== 'tool_use')
+                                : [...prev, 'tool_use']
+                            )
+                          }}
+                        >
+                          <Wrench className="h-3 w-3 mr-1" />
+                          {locale === 'ko' ? '도구' : 'Tools'}
+                        </Button>
+                        
+                        <Button
+                          variant={messageTypeFilter.includes('tool_result') ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setMessageTypeFilter(prev => 
+                              prev.includes('tool_result') 
+                                ? prev.filter(t => t !== 'tool_result')
+                                : [...prev, 'tool_result']
+                            )
+                          }}
+                        >
+                          <Terminal className="h-3 w-3 mr-1" />
+                          {locale === 'ko' ? '결과' : 'Results'}
+                        </Button>
+                        
+                        <Button
+                          variant={messageTypeFilter.includes('thinking') ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setMessageTypeFilter(prev => 
+                              prev.includes('thinking') 
+                                ? prev.filter(t => t !== 'thinking')
+                                : [...prev, 'thinking']
+                            )
+                          }}
+                        >
+                          <Brain className="h-3 w-3 mr-1" />
+                          {locale === 'ko' ? '사고' : 'Thinking'}
+                        </Button>
+                        
+                        {messageTypeFilter.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-muted-foreground"
+                            onClick={() => setMessageTypeFilter([])}
+                          >
+                            {locale === 'ko' ? '필터 초기화' : 'Clear filters'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
                     {/* 콘텐츠 영역 */}
@@ -423,44 +573,64 @@ export default function ProjectDetailPage() {
                       </div>
                     ) : sessionLines.length > 0 ? (
                       <>
-                        <div className="flex-1 overflow-y-auto pr-2">
+                        <div 
+                          className="flex-1 overflow-y-auto pr-2"
+                          onScroll={(e) => {
+                            const target = e.currentTarget
+                            const threshold = 100
+                            if (
+                              target.scrollHeight - target.scrollTop - target.clientHeight < threshold &&
+                              hasMore &&
+                              !isLoadingMore
+                            ) {
+                              loadMore()
+                            }
+                          }}
+                        >
                           <SessionViewerV2 
                             lines={sessionLines}
-                            viewMode={viewMode}
+                            viewMode="structured"
                             locale={locale}
                           />
+                          
+                          {/* 더 로드 중 표시기 */}
+                          {isLoadingMore && (
+                            <div className="flex items-center justify-center py-4">
+                              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                              <span className="text-sm text-muted-foreground">
+                                {locale === 'ko' ? '더 불러오는 중...' : 'Loading more...'}
+                              </span>
+                            </div>
+                          )}
+                          
+                          {/* 모든 데이터 로드 완료 */}
+                          {!hasMore && sessionLines.length > 0 && (
+                            <div className="text-center py-4 text-sm text-muted-foreground">
+                              {locale === 'ko' ? '모든 내용을 불러왔습니다' : 'All content loaded'}
+                            </div>
+                          )}
                         </div>
 
-                        {/* 페이지네이션 */}
-                        {totalPages > 1 && (
-                          <div className="flex items-center justify-between pt-4 mt-4 border-t">
-                            <p className="text-sm text-muted-foreground">
-                              {locale === 'ko' 
-                                ? `페이지 ${currentPage} / ${totalPages}` 
-                                : `Page ${currentPage} of ${totalPages}`}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fetchSessionLines(selectedFile.id, currentPage - 1, searchQuery)}
-                                disabled={currentPage <= 1}
-                              >
-                                <ChevronLeft className="h-4 w-4" />
-                                {locale === 'ko' ? '이전' : 'Previous'}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fetchSessionLines(selectedFile.id, currentPage + 1, searchQuery)}
-                                disabled={currentPage >= totalPages}
-                              >
-                                {locale === 'ko' ? '다음' : 'Next'}
-                                <ChevronRight className="h-4 w-4" />
-                              </Button>
-                            </div>
+                        {/* 하단 정보 바 */}
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t text-sm text-muted-foreground">
+                          <div>
+                            {selectedFile && (
+                              <span className="font-medium">{selectedFile.file_name}</span>
+                            )}
+                            <span className="mx-2">•</span>
+                            {locale === 'ko' 
+                              ? `${totalLines}개 라인` 
+                              : `${totalLines} lines`}
+                            {currentPage > 1 && (
+                              <>
+                                <span className="mx-2">•</span>
+                                {locale === 'ko' 
+                                  ? `${currentPage}페이지 로드됨` 
+                                  : `Page ${currentPage} loaded`}
+                              </>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </>
                     ) : (
                       <div className="flex items-center justify-center flex-1">

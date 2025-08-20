@@ -56,6 +56,23 @@ export function formatTokenUsage(usage?: any): string {
   return parts.join(' ');
 }
 
+export function calculateDuration(startTime?: string, endTime?: string): string | null {
+  if (!startTime || !endTime) return null;
+  
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const duration = end - start;
+  
+  if (duration < 0) return null;
+  
+  const seconds = duration / 1000;
+  if (seconds < 1) return `${duration}ms`;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  
+  const minutes = seconds / 60;
+  return `${minutes.toFixed(1)}m`;
+}
+
 export function getRelativeTime(timestamp: string): string {
   const date = new Date(timestamp);
   const now = new Date();

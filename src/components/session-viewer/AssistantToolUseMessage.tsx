@@ -3,10 +3,11 @@
 import React from 'react'
 import { 
   Terminal, FileText, PenTool, Search, Globe, CheckSquare, 
-  FolderOpen, Code, AlertCircle, Wrench, Bot, Play,
-  FileEdit, FilePlus, FolderSearch, Hash, Link, Brain
+  FolderOpen, Code, AlertCircle, Wrench, Play,
+  FileEdit, FilePlus, FolderSearch, Hash, Link, Brain,
+  Zap, Clock
 } from 'lucide-react'
-import { formatTimestamp, extractFileName, extractCommand } from './utils'
+import { formatTimestamp, extractFileName, extractCommand, formatTokenUsage, calculateDuration } from './utils'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 
@@ -117,6 +118,8 @@ export const AssistantToolUseMessage: React.FC<AssistantToolUseMessageProps> = (
   const toolInput = toolUse.input
   const toolConfig = TOOL_CONFIG[toolName] || DEFAULT_TOOL
   const Icon = toolConfig.icon
+  const usage = data.message?.usage
+  const duration = calculateDuration(data.timestamp, data.completedAt)
   
   // Extract key information based on tool type
   const getToolSummary = () => {
@@ -164,25 +167,271 @@ export const AssistantToolUseMessage: React.FC<AssistantToolUseMessageProps> = (
   const summary = getToolSummary()
   const [showDetails, setShowDetails] = React.useState(false)
   
-  return (
-    <div className="flex gap-3">
-      {/* Tool Icon */}
-      <div className="flex-shrink-0 mt-1">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-sm">
-          <Bot className="h-4 w-4 text-white" />
+  // TodoList 전용 렌더링
+  if (toolName === 'TodoWrite') {
+    const todos = toolInput.todos || []
+    return (
+      <div className="ml-11">
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-1">
+            <CheckSquare className={`h-4 w-4 ${toolConfig.color}`} />
+            <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+              Todo List
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {formatTimestamp(data.timestamp)}
+            </span>
+            <Badge variant="outline" className="text-xs h-4 bg-orange-50 dark:bg-orange-950/30">
+              AssistantToolUse
+            </Badge>
+          </div>
+          
+          {/* Todo List Items */}
+          <div className="mt-2 space-y-1">
+            {todos.map((todo: any, index: number) => (
+              <div key={todo.id || index} className="flex items-start gap-2 text-sm">
+                <span className={`mt-0.5 ${
+                  todo.status === 'completed' ? 'text-green-600 dark:text-green-400' :
+                  todo.status === 'in_progress' ? 'text-blue-600 dark:text-blue-400' :
+                  'text-gray-400'
+                }`}>
+                  {todo.status === 'completed' ? '✓' : 
+                   todo.status === 'in_progress' ? '◌' : '○'}
+                </span>
+                <span className={`${
+                  todo.status === 'completed' ? 'line-through text-gray-500 dark:text-gray-400' : 
+                  'text-gray-900 dark:text-gray-100'
+                }`}>
+                  {todo.content}
+                </span>
+              </div>
+            ))}
+          </div>
+          
+          {/* Token & Duration */}
+          {(usage || duration) && (
+            <div className="flex items-center gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
+              {usage && (
+                <div className="flex items-center gap-1">
+                  <Zap className="h-3 w-3" />
+                  <span>{formatTokenUsage(usage)}</span>
+                </div>
+              )}
+              {duration && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  <span>{duration}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
-      
-      {/* Tool Card */}
+    )
+  }
+  
+  // Bash/Terminal 전용 렌더링
+  if (toolName === 'Bash') {
+    return (
+      <div className="ml-11">
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-1">
+            <Terminal className={`h-4 w-4 ${toolConfig.color}`} />
+            <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+              Terminal
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {formatTimestamp(data.timestamp)}
+            </span>
+            <Badge variant="outline" className="text-xs h-4 bg-orange-50 dark:bg-orange-950/30">
+              AssistantToolUse
+            </Badge>
+          </div>
+          
+          {/* Command Display */}
+          <div className="mt-2">
+            <div className="bg-gray-900 dark:bg-black rounded-md p-2">
+              <code className="text-xs text-green-400 font-mono">
+                $ {toolInput.command}
+              </code>
+            </div>
+            {toolInput.description && (
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                {toolInput.description}
+              </p>
+            )}
+          </div>
+          
+          {/* Token & Duration */}
+          {(usage || duration) && (
+            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {usage && (
+                <div className="flex items-center gap-1">
+                  <Zap className="h-3 w-3" />
+                  <span>{formatTokenUsage(usage)}</span>
+                </div>
+              )}
+              {duration && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  <span>{duration}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+  
+  // Read, Glob 등 단순 파일 작업 렌더링
+  if (toolName === 'Read' || toolName === 'Glob' || toolName === 'LS') {
+    return (
+      <div className="ml-11">
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-1">
+            <Icon className={`h-4 w-4 ${toolConfig.color}`} />
+            <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+              {toolConfig.label}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {formatTimestamp(data.timestamp)}
+            </span>
+            <Badge variant="outline" className="text-xs h-4 bg-orange-50 dark:bg-orange-950/30">
+              AssistantToolUse
+            </Badge>
+          </div>
+          
+          {/* File Path or Pattern */}
+          <div className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+            {toolName === 'Glob' ? (
+              <span className="font-mono">{toolInput.pattern}</span>
+            ) : (
+              <span className="font-mono">{extractFileName(toolInput.file_path || toolInput.path || '')}</span>
+            )}
+          </div>
+          
+          {/* Token & Duration */}
+          {(usage || duration) && (
+            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {usage && (
+                <div className="flex items-center gap-1">
+                  <Zap className="h-3 w-3" />
+                  <span>{formatTokenUsage(usage)}</span>
+                </div>
+              )}
+              {duration && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  <span>{duration}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+  
+  // Edit 툴 전용 diff 렌더링
+  if (toolName === 'Edit' || toolName === 'MultiEdit') {
+    const isMultiEdit = toolName === 'MultiEdit'
+    const edits = isMultiEdit ? toolInput.edits : [{ old_string: toolInput.old_string, new_string: toolInput.new_string }]
+    
+    return (
+      <div className="ml-11">
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-1">
+            <FileEdit className={`h-4 w-4 ${toolConfig.color}`} />
+            <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+              {toolConfig.label}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {formatTimestamp(data.timestamp)}
+            </span>
+            <Badge variant="outline" className="text-xs h-4 bg-orange-50 dark:bg-orange-950/30">
+              AssistantToolUse
+            </Badge>
+          </div>
+          
+          {/* File Path */}
+          <div className="text-sm font-mono text-gray-700 dark:text-gray-300 mb-2">
+            {extractFileName(toolInput.file_path)}
+          </div>
+          
+          {/* Code Diff */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+            {edits.map((edit: any, index: number) => (
+              <div key={index} className={index > 0 ? 'border-t border-gray-200 dark:border-gray-700' : ''}>
+                {/* Old Code (Remove) */}
+                {edit.old_string && (
+                  <div className="bg-red-50 dark:bg-red-950/20 p-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-red-600 dark:text-red-400 font-mono text-xs select-none">-</span>
+                      <pre className="flex-1 text-xs font-mono text-red-700 dark:text-red-300 whitespace-pre-wrap break-all">
+                        {edit.old_string.length > 200 ? 
+                          edit.old_string.substring(0, 100) + '\n...\n' + edit.old_string.substring(edit.old_string.length - 100) : 
+                          edit.old_string}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+                
+                {/* New Code (Add) */}
+                {edit.new_string && (
+                  <div className="bg-green-50 dark:bg-green-950/20 p-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-green-600 dark:text-green-400 font-mono text-xs select-none">+</span>
+                      <pre className="flex-1 text-xs font-mono text-green-700 dark:text-green-300 whitespace-pre-wrap break-all">
+                        {edit.new_string.length > 200 ? 
+                          edit.new_string.substring(0, 100) + '\n...\n' + edit.new_string.substring(edit.new_string.length - 100) : 
+                          edit.new_string}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          {/* Token & Duration */}
+          {(usage || duration) && (
+            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {usage && (
+                <div className="flex items-center gap-1">
+                  <Zap className="h-3 w-3" />
+                  <span>{formatTokenUsage(usage)}</span>
+                </div>
+              )}
+              {duration && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  <span>{duration}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+  
+  // 기본 렌더링 (Write, WebSearch 등)
+  return (
+    <div className="ml-11">
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center gap-2 mb-1">
+          <Icon className={`h-4 w-4 ${toolConfig.color}`} />
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-            Claude
+            {toolConfig.label}
           </span>
-          <Badge variant="secondary" className="h-5">
-            <Play className="h-3 w-3 mr-1" />
-            {locale === 'ko' ? '도구 사용' : 'Tool Use'}
+          <Badge variant="outline" className="h-5 text-xs">
+            {toolName}
           </Badge>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {formatTimestamp(data.timestamp)}
@@ -195,50 +444,40 @@ export const AssistantToolUseMessage: React.FC<AssistantToolUseMessageProps> = (
         
         {/* Tool Card Body */}
         <Card className={`${toolConfig.bgColor} border overflow-hidden`}>
-          <div className="p-4">
-            <div className="flex items-start gap-3">
+          <div className="p-3">
+            <div className="flex items-start gap-2">
               {/* Tool Icon */}
-              <div className={`p-2 rounded-lg bg-white/50 dark:bg-black/20 ${toolConfig.color}`}>
-                <Icon className="h-5 w-5" />
+              <div className={`p-1.5 rounded bg-white/50 dark:bg-black/20 ${toolConfig.color}`}>
+                <Icon className="h-4 w-4" />
               </div>
               
               {/* Tool Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-semibold text-sm">
-                    {toolConfig.label}
-                  </span>
-                  <Badge variant="outline" className="text-xs">
-                    {toolName}
-                  </Badge>
-                </div>
-                
                 {/* Primary Info */}
-                <div className="font-mono text-sm text-gray-900 dark:text-gray-100 mb-1">
+                <div className="font-mono text-sm text-gray-900 dark:text-gray-100">
                   {summary.primary}
                 </div>
                 
                 {/* Secondary Info */}
-                <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   {summary.secondary}
                 </div>
                 
-                {/* Show/Hide Details Button */}
-                <button
-                  onClick={() => setShowDetails(!showDetails)}
-                  className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  {showDetails ? '세부사항 숨기기' : '세부사항 보기'}
-                </button>
+                {/* Show/Hide Details Button - WebSearch만 */}
+                {toolName === 'WebSearch' && (
+                  <button
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    {showDetails ? '세부사항 숨기기' : '세부사항 보기'}
+                  </button>
+                )}
               </div>
             </div>
             
             {/* Detailed Input (collapsible) */}
             {showDetails && (
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Input Parameters:
-                </div>
                 <pre className="bg-white/50 dark:bg-black/20 rounded p-2 text-xs overflow-x-auto">
                   {JSON.stringify(toolInput, null, 2)}
                 </pre>
@@ -246,12 +485,25 @@ export const AssistantToolUseMessage: React.FC<AssistantToolUseMessageProps> = (
             )}
           </div>
           
-          {/* Tool ID Footer */}
-          <div className="bg-white/30 dark:bg-black/10 px-4 py-1 border-t border-gray-200 dark:border-gray-700">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              ID: {toolUse.id?.slice(0, 20)}...
-            </span>
-          </div>
+          {/* Token & Duration for Card-based tools */}
+          {(usage || duration) && (
+            <div className="px-3 pb-3">
+              <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                {usage && (
+                  <div className="flex items-center gap-1">
+                    <Zap className="h-3 w-3" />
+                    <span>{formatTokenUsage(usage)}</span>
+                  </div>
+                )}
+                {duration && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    <span>{duration}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       </div>
     </div>

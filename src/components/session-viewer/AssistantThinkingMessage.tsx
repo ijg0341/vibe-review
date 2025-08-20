@@ -1,8 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Brain, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
-import { formatTimestamp, truncateText, countLines } from './utils'
+import { Brain, Zap, Clock } from 'lucide-react'
+import { formatTimestamp, truncateText, countLines, formatTokenUsage, calculateDuration } from './utils'
 import { Badge } from '@/components/ui/badge'
 
 interface AssistantThinkingMessageProps {
@@ -23,13 +23,15 @@ export const AssistantThinkingMessage: React.FC<AssistantThinkingMessageProps> =
   const lineCount = countLines(thinkingText)
   const charCount = thinkingText.length
   const isLong = charCount > 500
+  const usage = data.message?.usage
+  const duration = calculateDuration(data.timestamp, data.completedAt)
   const [expanded, setExpanded] = React.useState(!isLong)
   
   return (
     <div className="flex gap-3">
       {/* Claude Avatar */}
       <div className="flex-shrink-0 mt-1">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-sm">
+        <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center">
           <Brain className="h-4 w-4 text-white" />
         </div>
       </div>
@@ -54,31 +56,36 @@ export const AssistantThinkingMessage: React.FC<AssistantThinkingMessageProps> =
           </Badge>
         </div>
         
-        {/* Thinking Message Box */}
-        <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 rounded-lg border border-purple-200 dark:border-purple-800 p-4 shadow-sm">
-          <div className="flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <div className="text-sm text-gray-700 dark:text-gray-300 italic whitespace-pre-wrap break-words">
-                {expanded || !isLong ? thinkingText : truncateText(thinkingText, 500)}
+        {/* Simple Thinking Message */}
+        <div className="text-sm text-gray-600 dark:text-gray-400 italic whitespace-pre-wrap break-words">
+          {expanded || !isLong ? thinkingText : truncateText(thinkingText, 500)}
+        </div>
+        
+        {isLong && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="mt-2 text-xs text-purple-600 dark:text-purple-400 hover:underline"
+          >
+            {expanded ? '접기' : '더 보기'}
+          </button>
+        )}
+        
+        {/* Metadata: Line count, Tokens, Duration */}
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-4">
+            <span>{lineCount} lines • {charCount} characters</span>
+            {usage && (
+              <div className="flex items-center gap-1">
+                <Zap className="h-3 w-3" />
+                <span>{formatTokenUsage(usage)}</span>
               </div>
-              
-              {isLong && (
-                <button
-                  onClick={() => setExpanded(!expanded)}
-                  className="mt-3 text-xs text-purple-600 dark:text-purple-400 hover:underline"
-                >
-                  {expanded ? '접기' : '더 보기'}
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {/* Metadata footer */}
-          <div className="mt-3 pt-3 border-t border-purple-200/50 dark:border-purple-800/50 flex items-center gap-3 text-xs text-purple-600 dark:text-purple-400">
-            <span>{lineCount} lines</span>
-            <span>•</span>
-            <span>{charCount} characters</span>
+            )}
+            {duration && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>{duration}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

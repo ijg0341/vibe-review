@@ -127,7 +127,7 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   }
   
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {lines.map(line => renderStructuredLine(line))}
     </div>
   )

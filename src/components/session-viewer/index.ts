@@ -13,4 +13,4 @@ export { AssistantThinkingMessage } from './AssistantThinkingMessage'
 
 // Shared exports
 export * from './message-types'
-export * from './utils'
+export { formatTimestamp as formatTimestampUtil } from './utils'

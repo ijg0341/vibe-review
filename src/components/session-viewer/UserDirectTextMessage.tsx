@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { User, MessageSquare } from 'lucide-react'
+import { User } from 'lucide-react'
 import { formatTimestamp, truncateText } from './utils'
 import { Badge } from '@/components/ui/badge'
 
@@ -23,7 +23,7 @@ export const UserDirectTextMessage: React.FC<UserDirectTextMessageProps> = ({
     <div className="flex gap-3">
       {/* User Avatar */}
       <div className="flex-shrink-0 mt-1">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-sm">
+        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
           <User className="h-4 w-4 text-white" />
         </div>
       </div>
@@ -44,26 +44,19 @@ export const UserDirectTextMessage: React.FC<UserDirectTextMessageProps> = ({
           </Badge>
         </div>
         
-        {/* Message Body */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 shadow-sm">
-          <div className="flex items-start gap-2">
-            <MessageSquare className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
-                {expanded ? content : truncateText(content, 200)}
-              </div>
-              
-              {isLongMessage && (
-                <button
-                  onClick={() => setExpanded(!expanded)}
-                  className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  {expanded ? '접기' : '더 보기'}
-                </button>
-              )}
-            </div>
-          </div>
+        {/* Simple Message */}
+        <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+          {expanded ? content : truncateText(content, 500)}
         </div>
+        
+        {isLongMessage && content.length > 500 && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            {expanded ? '접기' : '더 보기'}
+          </button>
+        )}
       </div>
     </div>
   )

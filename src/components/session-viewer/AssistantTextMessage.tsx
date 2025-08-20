@@ -1,8 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Bot, Sparkles, Zap } from 'lucide-react'
-import { formatTimestamp, formatTokenUsage } from './utils'
+import { Bot, Zap, Clock } from 'lucide-react'
+import { formatTimestamp, formatTokenUsage, calculateDuration } from './utils'
 import { Badge } from '@/components/ui/badge'
 
 interface AssistantTextMessageProps {
@@ -19,6 +19,7 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
   const text = textContent?.text || ''
   const usage = data.message?.usage
   const model = data.message?.model
+  const duration = calculateDuration(data.timestamp, data.completedAt)
   
   const [expanded, setExpanded] = React.useState(text.length <= 500)
   
@@ -56,7 +57,7 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
     <div className="flex gap-3">
       {/* Claude Avatar */}
       <div className="flex-shrink-0 mt-1">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-sm">
+        <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center">
           <Bot className="h-4 w-4 text-white" />
         </div>
       </div>
@@ -85,34 +86,35 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
           </Badge>
         </div>
         
-        {/* Message Body */}
-        <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 rounded-lg border border-purple-200 dark:border-purple-800 p-4 shadow-sm">
-          <div className="flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
-                {expanded ? renderFormattedText(text) : renderFormattedText(text.substring(0, 500) + '...')}
-              </div>
-              
-              {text.length > 500 && (
-                <button
-                  onClick={() => setExpanded(!expanded)}
-                  className="mt-3 text-xs text-purple-600 dark:text-purple-400 hover:underline"
-                >
-                  {expanded ? '접기' : '더 보기'}
-                </button>
-              )}
-            </div>
-          </div>
+        {/* Simple Message */}
+        <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+          {expanded ? renderFormattedText(text) : renderFormattedText(text.substring(0, 500) + '...')}
         </div>
         
-        {/* Token Usage */}
-        {usage && (
-          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-            <div className="flex items-center gap-1">
-              <Zap className="h-3 w-3" />
-              <span>Tokens: {formatTokenUsage(usage)}</span>
-            </div>
+        {text.length > 500 && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="mt-2 text-xs text-purple-600 dark:text-purple-400 hover:underline"
+          >
+            {expanded ? '접기' : '더 보기'}
+          </button>
+        )}
+        
+        {/* Token Usage & Duration */}
+        {(usage || duration) && (
+          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+            {usage && (
+              <div className="flex items-center gap-1">
+                <Zap className="h-3 w-3" />
+                <span>{formatTokenUsage(usage)}</span>
+              </div>
+            )}
+            {duration && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>{duration}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

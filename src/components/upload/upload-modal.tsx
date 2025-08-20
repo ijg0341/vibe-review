@@ -249,14 +249,18 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   }, [toast, t.upload.modal.errors, locale, scanForProjects])
 
 
-  // 실제 파일 업로드
-  const uploadFileToStorage = useCallback(async (fileHandle: any, filePath: string): Promise<boolean> => {
+  // 파일 처리 (Storage 없이 직접 처리)
+  const processFileDirectly = useCallback(async (
+    fileHandle: any, 
+    projectName: string,
+    uploadId: string
+  ): Promise<{ fileId: string | null; newLines: number }> => {
     try {
       console.log('Reading file from handle...')
       
       if (!user?.id) {
         console.error('No user ID available')
-        return false
+        return { fileId: null, newLines: 0 }
       }
       
       // 파일 읽기
@@ -265,30 +269,73 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
       
       console.log(`File read: ${file.name}, size: ${file.size}, content length: ${fileContent.length}`)
       
-      // Supabase Storage에 업로드 - 세션을 명시적으로 설정
-      const fileName = `${user.id}/${filePath}/${file.name}`
-      console.log('Uploading to Supabase Storage:', fileName)
-      console.log('User ID:', user.id)
+      // 기존 파일이 있는지 확인 (파일명과 upload_id 기준)
+      const { data: existingFile } = await supabase
+        .from('uploaded_files')
+        .select('*')
+        .eq('upload_id', uploadId)
+        .eq('file_name', file.name)
+        .single()
       
-      const { data, error } = await supabase.storage
-        .from('session-files')
-        .upload(fileName, fileContent, {
-          contentType: 'application/jsonl',
-          upsert: true
-        })
+      let fileId: string
+      let existingLineCount = 0
       
-      if (error) {
-        console.error('Storage upload error:', error)
-        return false
+      if (existingFile) {
+        // 기존 파일이 있으면 재사용
+        console.log('Existing file found, will update:', existingFile.id)
+        fileId = existingFile.id
+        existingLineCount = existingFile.processed_lines || 0
+        
+        // 파일 정보 업데이트
+        await supabase
+          .from('uploaded_files')
+          .update({
+            file_size: file.size,
+            uploaded_at: new Date().toISOString(),
+            processing_status: 'pending'
+          })
+          .eq('id', fileId)
+      } else {
+        // 새 파일 레코드 생성
+        const { data: newFile, error: fileError } = await supabase
+          .from('uploaded_files')
+          .insert({
+            user_id: user.id,
+            upload_id: uploadId,
+            file_name: file.name,
+            file_path: `${projectName}/${file.name}`, // Storage 없이 가상 경로
+            file_size: file.size,
+            uploaded_at: new Date().toISOString(),
+            processing_status: 'pending'
+          })
+          .select()
+          .single()
+        
+        if (fileError || !newFile) {
+          console.error('File record creation error:', fileError)
+          return { fileId: null, newLines: 0 }
+        }
+        
+        fileId = newFile.id
       }
       
-      console.log('Upload successful:', data)
-      return true
+      // JSONL 처리 (증분 업데이트 지원)
+      const jsonlProcessor = new JSONLProcessor()
+      const result = await jsonlProcessor.processJSONLFile(
+        fileContent, 
+        fileId, 
+        uploadId,
+        existingLineCount // 기존 라인 수 전달
+      )
+      
+      console.log(`JSONL processing result: ${result.processedLines} lines (${result.newLines} new)`)
+      
+      return { fileId, newLines: result.newLines || result.processedLines }
     } catch (error) {
       console.error('File processing error:', error)
-      return false
+      return { fileId: null, newLines: 0 }
     }
-  }, [user])
+  }, [user, supabase])
 
   // 프로젝트 선택/해제
   const toggleProjectSelection = useCallback((folderName: string) => {
@@ -336,28 +383,76 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     try {
       console.log('Starting upload for projects:', selectedProjectList)
       
-      // 각 프로젝트별로 업로드
+      // 각 프로젝트별로 처리
       for (const project of selectedProjectList) {
         console.log(`Processing project: ${project.projectName}`)
         
-        let projectSuccessCount = 0
-        const uploadedFiles: Array<{ name: string; path: string }> = []
+        // 먼저 기존 프로젝트가 있는지 확인
+        const { data: existingUpload } = await supabase
+          .from('uploads')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('project_name', project.projectName)
+          .eq('project_path', project.folderName)
+          .single()
         
-        // 프로젝트 내 파일들 업로드
+        let uploadId: string
+        
+        if (existingUpload) {
+          // 기존 프로젝트가 있으면 재사용
+          console.log('Using existing project:', existingUpload.id)
+          uploadId = existingUpload.id
+          
+          // 업로드 시간만 업데이트
+          await supabase
+            .from('uploads')
+            .update({
+              uploaded_at: new Date().toISOString()
+            })
+            .eq('id', uploadId)
+        } else {
+          // 새 프로젝트 생성
+          const projectMetadata = {
+            user_id: user.id,
+            project_name: project.projectName,
+            project_path: project.folderName,
+            session_count: 0, // 나중에 업데이트
+            uploaded_at: new Date().toISOString()
+          }
+          
+          const { data: newUpload, error: uploadError } = await supabase
+            .from('uploads')
+            .insert([projectMetadata])
+            .select()
+            .single()
+          
+          if (uploadError || !newUpload) {
+            console.error('Project creation error:', uploadError)
+            continue
+          }
+          
+          uploadId = newUpload.id
+        }
+        
+        let projectSuccessCount = 0
+        let totalNewLines = 0
+        
+        // 프로젝트 내 파일들 처리
         for (const file of project.files) {
           processedFiles++
-          console.log(`Uploading file ${processedFiles}/${totalFiles}: ${file.name}`)
+          console.log(`Processing file ${processedFiles}/${totalFiles}: ${file.name}`)
           
-          const success = await uploadFileToStorage(file.handle, project.folderName)
-          console.log(`Upload ${file.name} result:`, success)
+          const result = await processFileDirectly(
+            file.handle, 
+            project.projectName,
+            uploadId
+          )
           
-          if (success) {
+          if (result.fileId) {
             projectSuccessCount++
             totalSuccessCount++
-            uploadedFiles.push({
-              name: file.name,
-              path: project.folderName
-            })
+            totalNewLines += result.newLines
+            console.log(`File ${file.name} processed: ${result.newLines} new lines`)
           }
           
           // 진행률 업데이트
@@ -365,90 +460,16 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
           setUploadProgress(Math.floor((processedFiles / totalFiles) * 100))
         }
         
-        // 프로젝트별 메타데이터 저장 (성공한 파일이 있을 때만)
-        if (projectSuccessCount > 0 && uploadedFiles.length > 0) {
-          try {
-            // 1. uploads 테이블에 프로젝트 메타데이터 저장
-            const projectMetadata = {
-              user_id: user.id,
-              project_name: project.projectName,
-              project_path: project.folderName,
-              session_count: projectSuccessCount,
-              uploaded_at: new Date().toISOString()
-            }
-            
-            console.log('Saving project metadata:', projectMetadata)
-            
-            const { data: uploadData, error: uploadError } = await supabase
-              .from('uploads')
-              .insert([projectMetadata])
-              .select()
-              .single()
-            
-            if (uploadError) {
-              console.error('Project metadata save error:', uploadError)
-            } else if (uploadData) {
-              console.log('Project metadata saved:', uploadData)
-              
-              // 2. uploaded_files 테이블에 개별 파일 정보 저장 및 JSONL 처리
-              const jsonlProcessor = new JSONLProcessor()
-              
-              for (const file of uploadedFiles) {
-                const filePath = `${user.id}/${file.path}/${file.name}`
-                
-                // 파일 정보 DB에 저장
-                const { data: fileData, error: fileError } = await supabase
-                  .from('uploaded_files')
-                  .insert({
-                    user_id: user.id,
-                    upload_id: uploadData.id,
-                    file_name: file.name,
-                    file_path: filePath,
-                    uploaded_at: new Date().toISOString(),
-                    processing_status: 'pending'
-                  })
-                  .select()
-                  .single()
-                
-                if (fileError) {
-                  console.error('File record save error:', fileError)
-                  continue
-                }
-                
-                // Storage에서 파일 내용 가져오기
-                try {
-                  const { data: fileContent, error: downloadError } = await supabase.storage
-                    .from('session-files')
-                    .download(filePath)
-                  
-                  if (downloadError) {
-                    console.error('Error downloading file for processing:', downloadError)
-                    continue
-                  }
-                  
-                  // 파일 내용을 텍스트로 변환
-                  const text = await fileContent.text()
-                  
-                  // JSONL 파싱 및 DB 저장 (백그라운드에서 처리)
-                  jsonlProcessor.processJSONLFile(text, fileData.id, uploadData.id)
-                    .then(result => {
-                      console.log(`JSONL processing result for ${file.name}:`, result)
-                    })
-                    .catch(error => {
-                      console.error(`JSONL processing error for ${file.name}:`, error)
-                    })
-                    
-                } catch (error) {
-                  console.error('Error processing file:', error)
-                }
-              }
-              
-              console.log('File records saved and JSONL processing initiated')
-            }
-            
-          } catch (metadataError) {
-            console.warn('Metadata save failed for project, but files were uploaded successfully:', metadataError)
-          }
+        // 프로젝트의 session_count 업데이트
+        if (projectSuccessCount > 0) {
+          await supabase
+            .from('uploads')
+            .update({
+              session_count: projectSuccessCount
+            })
+            .eq('id', uploadId)
+          
+          console.log(`Project ${project.projectName}: ${projectSuccessCount} files, ${totalNewLines} new lines`)
         }
       }
       
@@ -483,7 +504,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
       })
       setStep('select')
     }
-  }, [discoveredProjects, selectedProjects, toast, t.upload.modal.errors, user, uploadFileToStorage, supabase])
+  }, [discoveredProjects, selectedProjects, toast, t.upload.modal.errors, user, processFileDirectly, supabase])
 
 
   // 모달 닫기 및 리셋

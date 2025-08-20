@@ -36,7 +36,7 @@ export const UserMessage: React.FC<UserMessageProps> = React.memo(({ data, local
                 ) : (
                   <CheckCircle className="h-4 w-4 text-green-500" />
                 )}
-                <Badge variant={item.is_error ? 'destructive' : 'success'} className="text-xs">
+                <Badge variant={item.is_error ? 'destructive' : 'default'} className="text-xs">
                   Tool Result
                 </Badge>
                 <span className="text-xs text-muted-foreground">
