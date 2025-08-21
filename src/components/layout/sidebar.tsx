@@ -13,8 +13,7 @@ import {
   ChevronLeft,
   Plus,
   History,
-  Users,
-  Key
+  Users
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -42,11 +41,6 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
       label: t.sidebar.myPrompts,
       icon: History,
       href: "/my-prompts",
-    },
-    {
-      label: locale === 'ko' ? 'API 키' : 'API Keys',
-      icon: Key,
-      href: "/api-keys",
     },
     {
       label: t.sidebar.reviews,

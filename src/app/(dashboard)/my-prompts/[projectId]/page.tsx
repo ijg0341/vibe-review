@@ -51,6 +51,8 @@ interface SessionFile {
   uploaded_at: string
   processing_status?: string
   processed_lines?: number
+  firstMessage?: string // 첫 번째 대화 내용
+  sessionTimestamp?: number // 세션 타임스탬프 (정렬용)
 }
 
 interface SessionLine {
@@ -126,11 +128,116 @@ export default function ProjectDetailPage() {
         return
       }
 
-      setSessionFiles(filesData || [])
+      // 각 파일의 첫 번째 대화와 타임스탬프 가져오기
+      const filesWithMetadata = await Promise.all(
+        (filesData || []).map(async (file) => {
+          try {
+            // 첫 번째와 마지막 라인 가져오기 (타임스탬프 확인용)
+            const [firstLineResult, lastLineResult] = await Promise.all([
+              supabase
+                .from('session_lines')
+                .select('content')
+                .eq('file_id', file.id)
+                .order('line_number', { ascending: true })
+                .limit(1)
+                .single(),
+              supabase
+                .from('session_lines')
+                .select('content')
+                .eq('file_id', file.id)
+                .order('line_number', { ascending: false })
+                .limit(1)
+                .single()
+            ])
+            
+            let firstMessage = ''
+            let sessionTimestamp = 0
+            
+            // 마지막 메시지의 타임스탬프 추출 (최신 세션 판단용)
+            if (lastLineResult.data?.content) {
+              const lastContent = lastLineResult.data.content
+              // 타임스탬프 추출
+              if (lastContent.timestamp) {
+                sessionTimestamp = new Date(lastContent.timestamp).getTime()
+              }
+            }
+            
+            // 타임스탬프가 없으면 파일명에서 추출 시도
+            if (!sessionTimestamp) {
+              // 파일명 패턴 분석 (예: 2024-01-15_14-30-00.jsonl 또는 session_1705324200000.jsonl)
+              const dateMatch = file.file_name.match(/(\d{4})[-_](\d{2})[-_](\d{2})[-_]?(\d{2})?[-:]?(\d{2})?[-:]?(\d{2})?/)
+              if (dateMatch) {
+                const [_, year, month, day, hour = '00', minute = '00', second = '00'] = dateMatch
+                sessionTimestamp = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`).getTime()
+              } else {
+                // 타임스탬프 숫자 패턴 찾기
+                const timestampMatch = file.file_name.match(/(\d{10,13})/)
+                if (timestampMatch) {
+                  sessionTimestamp = parseInt(timestampMatch[1])
+                  // 10자리면 초 단위이므로 밀리초로 변환
+                  if (sessionTimestamp < 10000000000) {
+                    sessionTimestamp *= 1000
+                  }
+                }
+              }
+            }
+            
+            // 그래도 없으면 uploaded_at 사용
+            if (!sessionTimestamp) {
+              sessionTimestamp = new Date(file.uploaded_at).getTime()
+            }
+            
+            // 첫 번째 메시지 추출
+            if (firstLineResult.data?.content) {
+              const content = firstLineResult.data.content
+              
+              // 사용자 메시지인 경우
+              if (content.type === 'user' && content.message?.content) {
+                const msgContent = content.message.content
+                if (typeof msgContent === 'string') {
+                  firstMessage = msgContent
+                } else if (Array.isArray(msgContent)) {
+                  const textContent = msgContent.find(item => item.type === 'text')
+                  if (textContent?.text) {
+                    firstMessage = textContent.text
+                  }
+                }
+              }
+              // Assistant 메시지인 경우
+              else if (content.type === 'assistant' && content.message?.content) {
+                const msgContent = content.message.content
+                if (Array.isArray(msgContent)) {
+                  const textContent = msgContent.find(item => item.type === 'text')
+                  if (textContent?.text) {
+                    firstMessage = textContent.text
+                  }
+                }
+              }
+              
+              // 긴 텍스트 잘라내기
+              if (firstMessage.length > 100) {
+                firstMessage = firstMessage.substring(0, 100) + '...'
+              }
+            }
+            
+            return { ...file, firstMessage, sessionTimestamp }
+          } catch (error) {
+            console.error('Error fetching metadata for file:', file.id, error)
+            return { ...file, sessionTimestamp: new Date(file.uploaded_at).getTime() }
+          }
+        })
+      )
+
+      // 세션 타임스탬프로 정렬 (최신이 먼저)
+      const sortedFiles = filesWithMetadata.sort((a, b) => {
+        return (b.sessionTimestamp || 0) - (a.sessionTimestamp || 0)
+      })
+
+      setSessionFiles(sortedFiles)
       
-      // 첫 번째 파일 자동 선택
-      if (filesData && filesData.length > 0) {
-        setSelectedFile(filesData[0])
+      // 첫 번째 파일 자동 선택 (정렬된 파일 중 첫 번째)
+      if (sortedFiles && sortedFiles.length > 0) {
+        setSelectedFile(sortedFiles[0])
       }
     } catch (error) {
       console.error('Error in fetchProjectData:', error)
@@ -421,11 +528,45 @@ export default function ProjectDetailPage() {
                         }`}
                       >
                         <div className="flex items-start justify-between">
-                          <div className="flex items-start gap-3">
-                            <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium break-all">{file.file_name}</p>
-                              <div className="flex items-center gap-2">
+                          <div className="flex items-start gap-3 w-full">
+                            <FileText className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <div className="space-y-1 flex-1 min-w-0">
+                              {/* 첫 번째 대화 내용 표시 */}
+                              {file.firstMessage ? (
+                                <p className="text-sm font-medium overflow-hidden" 
+                                   style={{ 
+                                     display: '-webkit-box',
+                                     WebkitLineClamp: 2,
+                                     WebkitBoxOrient: 'vertical',
+                                     overflow: 'hidden'
+                                   }}>
+                                  {file.firstMessage}
+                                </p>
+                              ) : (
+                                <p className="text-sm font-medium text-muted-foreground italic">
+                                  {locale === 'ko' ? '내용 없음' : 'No content'}
+                                </p>
+                              )}
+                              {/* 파일 정보 */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* 세션 시간 표시 */}
+                                {file.sessionTimestamp && (
+                                  <span className="text-xs text-muted-foreground">
+                                    <Clock className="inline h-3 w-3 mr-1" />
+                                    {new Date(file.sessionTimestamp).toLocaleString(
+                                      locale === 'ko' ? 'ko-KR' : 'en-US', 
+                                      { 
+                                        month: 'short', 
+                                        day: 'numeric', 
+                                        hour: '2-digit', 
+                                        minute: '2-digit' 
+                                      }
+                                    )}
+                                  </span>
+                                )}
+                                <span className="text-xs text-muted-foreground truncate">
+                                  {file.file_name}
+                                </span>
                                 <span className="text-xs text-muted-foreground">
                                   {formatFileSize(file.file_size)}
                                 </span>
