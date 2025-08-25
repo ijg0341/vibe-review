@@ -120,9 +120,12 @@ export default function SettingsPage() {
     try {
       setLoading(true)
       
-      // user_settings 테이블에서 설정 조회
+      // user_settings 테이블에서 설정 조회 - RPC 대신 직접 쿼리
       const { data: settings, error } = await supabase
-        .rpc('get_or_create_user_settings')
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
       
       if (error) {
         console.error('Error fetching settings:', error)

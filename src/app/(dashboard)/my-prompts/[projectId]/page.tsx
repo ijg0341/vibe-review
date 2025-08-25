@@ -255,36 +255,53 @@ export default function ProjectDetailPage() {
         setIsLoadingMore(true)
       }
       
-      // 먼저 총 라인 수와 페이지 정보 가져오기
+      // 직접 테이블에서 데이터 가져오기 (RPC 함수 대신)
       if (page === 1) {
-        const { data: infoData, error: infoError } = await supabase
-          .rpc('get_session_lines_info', {
-            p_file_id: fileId,
-            p_search: search || null
-          })
+        // 총 라인 수 계산 - 검색 조건 제거
+        let countQuery = supabase
+          .from('session_lines')
+          .select('*', { count: 'exact', head: true })
+          .eq('file_id', fileId)
         
-        if (infoError) {
-          console.error('Error fetching lines info:', infoError)
-          return
+        if (search) {
+          countQuery = countQuery.ilike('raw_text', `%${search}%`)
         }
         
-        if (infoData && infoData.length > 0) {
-          setTotalLines(infoData[0].total_lines)
-          setTotalPages(infoData[0].total_pages)
+        const { count, error: countError } = await countQuery
+        
+        if (countError) {
+          console.error('Error fetching count:', countError)
+          console.error('Count error details:', countError)
+        }
+        
+        if (count !== null) {
+          setTotalLines(count)
+          setTotalPages(Math.ceil(count / ITEMS_PER_PAGE))
         }
       }
       
       // 실제 라인 데이터 가져오기
-      const { data, error } = await supabase
-        .rpc('get_session_lines', {
-          p_file_id: fileId,
-          p_page: page,
-          p_limit: ITEMS_PER_PAGE,
-          p_search: search || null
-        })
+      let dataQuery = supabase
+        .from('session_lines')
+        .select('*')
+        .eq('file_id', fileId)
+        .order('line_number', { ascending: true })
+        .range((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE - 1)
+      
+      if (search) {
+        dataQuery = dataQuery.ilike('raw_text', `%${search}%`)
+      }
+      
+      const { data, error } = await dataQuery
       
       if (error) {
         console.error('Error fetching session lines:', error)
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
         if (!append) setSessionLines([])
         return
       }

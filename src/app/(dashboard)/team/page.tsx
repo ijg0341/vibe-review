@@ -70,11 +70,10 @@ export default function TeamPage() {
     try {
       setLoading(true)
       
-      // profiles 테이블에서 모든 사용자 가져오기 (본인 제외)
+      // profiles 테이블에서 모든 사용자 가져오기 (본인 포함)
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
-        .neq('id', user.id)
         .order('created_at', { ascending: false })
 
       if (profilesError) {
