@@ -60,7 +60,7 @@ function configureApiKey(apiKey, serverUrl) {
 }
 
 // Upload JSONL file
-async function uploadFile(filePath, projectName, config) {
+async function uploadFile(filePath, projectName, config, projectId = null) {
   return new Promise((resolve, reject) => {
     const fileName = path.basename(filePath);
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -68,7 +68,8 @@ async function uploadFile(filePath, projectName, config) {
     const data = JSON.stringify({
       projectName,
       fileName,
-      content
+      content,
+      projectId
     });
     
     const url = new URL(config.serverUrl);
@@ -203,7 +204,7 @@ function filterProjectsBySettings(projects, userSettings) {
 }
 
 // Main upload command
-async function uploadCommand(targetPath) {
+async function uploadCommand(targetPath, options = {}) {
   const config = loadConfig();
   
   if (!config.apiKey) {
@@ -217,6 +218,8 @@ async function uploadCommand(targetPath) {
     console.log(\`\${colors.yellow}Run: vibe-upload config --server-url YOUR_SERVER_URL\${colors.reset}\`);
     process.exit(1);
   }
+  
+  const projectId = options.projectId || null;
   
   // 사용자 설정 가져오기
   console.log(\`\${colors.blue}Checking user settings...\${colors.reset}\`);
@@ -258,7 +261,7 @@ async function uploadCommand(targetPath) {
       process.stdout.write(\`  Uploading \${fileName}...\`);
       
       try {
-        const result = await uploadFile(file, projectName, config);
+        const result = await uploadFile(file, projectName, config, projectId);
         
         if (result.success) {
           if (result.newLines > 0) {
@@ -297,7 +300,7 @@ const args = process.argv.slice(2);
 if (args.length === 0) {
   console.log('Usage:');
   console.log('  vibe-upload config --api-key KEY --server-url URL');
-  console.log('  vibe-upload [path]');
+  console.log('  vibe-upload [path] [--project-id PROJECT_ID]');
   console.log('  vibe-upload status');
   process.exit(0);
 }
@@ -327,7 +330,17 @@ if (args[0] === 'config') {
   }
 } else {
   const targetPath = args[0] || path.join(os.homedir(), '.claude', 'projects');
-  uploadCommand(targetPath).catch(console.error);
+  
+  // Check for --project-id option
+  let projectId = null;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === '--project-id' && args[i + 1]) {
+      projectId = args[i + 1];
+      break;
+    }
+  }
+  
+  uploadCommand(targetPath, { projectId }).catch(console.error);
 }
 `;
 

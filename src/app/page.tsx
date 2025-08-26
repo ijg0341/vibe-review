@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { ProtectedRoute } from "@/components/auth/protected-route"
-import { UploadModal } from "@/components/upload/upload-modal"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +12,6 @@ import {
   Activity, 
   FolderOpen, 
   MessageSquare, 
-  Upload,
   Clock,
   TrendingUp,
   Users,
@@ -27,7 +25,6 @@ import { useTranslation } from "@/lib/translations"
 export default function DashboardPage() {
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
-  const [uploadModalOpen, setUploadModalOpen] = useState(false)
   
   const myStats = [
     {
@@ -152,20 +149,13 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
-      <DashboardLayout onUploadClick={() => setUploadModalOpen(true)}>
+      <DashboardLayout>
         <div className="space-y-6">
         <div className="flex items-center justify-between relative z-10">
           <div>
             <h1 className="text-3xl font-bold">{t.dashboard.title}</h1>
             <p className="text-muted-foreground">{t.dashboard.subtitle}</p>
           </div>
-          <Button 
-            onClick={() => setUploadModalOpen(true)}
-            className="relative z-50"
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            {t.dashboard.uploadHistory}
-          </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -358,11 +348,6 @@ export default function DashboardPage() {
         </Card>
         </div>
       </DashboardLayout>
-      
-      <UploadModal 
-        open={uploadModalOpen} 
-        onOpenChange={setUploadModalOpen} 
-      />
     </ProtectedRoute>
   )
 }

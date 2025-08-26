@@ -32,23 +32,21 @@ async function verifyApiKey(apiKey: string): Promise<{ isValid: boolean; userId?
   }
 }
 
+// POST: JSONL 파일 업로드
 export async function POST(request: NextRequest) {
+  console.log('=== Upload API called ===')
   try {
-    console.log('=== Upload API called ===')
-    
-    // API 키 확인
+    // 헤더에서 API 키 추출
     const authHeader = request.headers.get('authorization')
     console.log('Auth header:', authHeader ? 'Present' : 'Missing')
-    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('No valid authorization header')
       return NextResponse.json(
-        { error: 'API key required' },
+        { error: 'Missing or invalid authorization header' },
         { status: 401 }
       )
     }
     
-    const apiKey = authHeader.substring(7)
+    const apiKey = authHeader.replace('Bearer ', '')
     console.log('API key extracted:', apiKey.substring(0, 12) + '...')
     
     // API 키 검증
@@ -83,21 +81,21 @@ export async function POST(request: NextRequest) {
       .eq('user_id', verification.userId)
       .single()
     
-    if (userSettings?.project_path && projectName) {
-      // 프로젝트 이름에서 작업 디렉토리 prefix 제거
+    // 프로젝트 이름에서 작업 디렉토리 prefix 제거
+    if (userSettings?.project_path) {
       const workingDirPrefix = userSettings.project_path.replace(/\//g, '-').replace(/^-/, '-')
-      console.log('Cleaning project name:', projectName, 'with prefix:', workingDirPrefix)
-      
       if (projectName.startsWith(workingDirPrefix)) {
-        projectName = projectName.substring(workingDirPrefix.length).replace(/^-/, '')
-        console.log('Cleaned project name:', projectName)
+        const cleanProjectName = projectName.substring(workingDirPrefix.length).replace(/^-/, '')
+        console.log(`Cleaning project name: ${projectName} -> ${cleanProjectName}`)
+        projectName = cleanProjectName || 'root'
       }
     }
     
-    // 입력 검증
-    if (!fileName || !content) {
+    // 필수 필드 검증
+    if (!projectName || !fileName || !content) {
+      console.log('Missing required fields')
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: projectName, fileName, content' },
         { status: 400 }
       )
     }
@@ -132,31 +130,22 @@ export async function POST(request: NextRequest) {
       sessionId = existingSession.id
       console.log('Using existing session:', sessionId)
       
-      // 세션 업데이트 (파일 정보 포함)
+      // 세션 업데이트
       await supabase
         .from('project_sessions')
         .update({
-          file_name: fileName,
-          file_path: `${projectName}/${fileName}`,
-          file_size: content.length,
-          processing_status: 'pending',
           uploaded_at: new Date().toISOString()
         })
         .eq('id', sessionId)
     } else {
-      // 새 세션 생성 (파일 정보 포함)
+      // 새 세션 생성
       const { data: newSession, error: sessionError } = await supabase
         .from('project_sessions')
         .insert({
           project_id: projectId,
           user_id: verification.userId,
           session_name: sessionName,
-          file_name: fileName,
-          file_path: `${projectName}/${fileName}`,
-          file_size: content.length,
           session_count: 0,
-          processing_status: 'pending',
-          processed_lines: 0,
           uploaded_at: new Date().toISOString()
         })
         .select()
@@ -174,45 +163,99 @@ export async function POST(request: NextRequest) {
       console.log('Created new session:', sessionId)
     }
     
-    // 기존 라인 수 확인
-    const { count: existingLineCount } = await supabase
-      .from('session_lines')
-      .select('*', { count: 'exact', head: true })
-      .eq('upload_id', sessionId)
+    // uploadId는 이제 sessionId를 사용
+    const uploadId = sessionId
     
-    console.log('Existing line count for session:', existingLineCount || 0)
+    // 파일 처리
+    console.log('Looking for existing file:', fileName)
+    const { data: existingFile, error: fileQueryError } = await supabase
+      .from('uploaded_files')
+      .select('*')
+      .eq('upload_id', uploadId)
+      .eq('file_name', fileName)
+      .maybeSingle()
+      
+    console.log('File query result:', { existingFile, error: fileQueryError })
     
-    // JSONL 처리
+    let fileId: string
+    let existingLineCount = 0
+    
+    if (existingFile) {
+      fileId = existingFile.id
+      existingLineCount = existingFile.processed_lines || 0
+      
+      // 파일 정보 업데이트
+      await supabase
+        .from('uploaded_files')
+        .update({
+          file_size: content.length,
+          uploaded_at: new Date().toISOString(),
+          processing_status: 'pending'
+        })
+        .eq('id', fileId)
+    } else {
+      // 새 파일 레코드 생성
+      console.log('Creating new file record...', {
+        user_id: verification.userId,
+        upload_id: uploadId,
+        file_name: fileName,
+        file_path: `${projectName}/${fileName}`,
+        file_size: content.length
+      })
+      
+      const { data: newFile, error: fileError } = await supabase
+        .from('uploaded_files')
+        .insert({
+          user_id: verification.userId,
+          upload_id: uploadId,
+          file_name: fileName,
+          file_path: `${projectName}/${fileName}`,
+          file_size: content.length,
+          uploaded_at: new Date().toISOString(),
+          processing_status: 'pending',
+          project_session_id: sessionId
+        })
+        .select()
+        .single()
+      
+      console.log('File creation result:', { newFile, fileError })
+      
+      if (fileError || !newFile) {
+        console.error('Failed to create file record:', fileError)
+        return NextResponse.json(
+          { error: 'Failed to create file record', details: fileError?.message || 'Unknown error' },
+          { status: 500 }
+        )
+      }
+      
+      fileId = newFile.id
+      console.log('New file created with ID:', fileId)
+    }
+    
+    // JSONL 처리 (서버 사이드 클라이언트 사용)
     console.log('Creating JSONLProcessor...')
     const jsonlProcessor = new JSONLProcessor(supabase)
-    console.log('Starting JSONL processing...', { sessionId, existingLineCount })
+    console.log('Starting JSONL processing...', { fileId, uploadId, existingLineCount })
     const result = await jsonlProcessor.processJSONLFile(
       content,
-      sessionId,
-      sessionId,
-      existingLineCount || 0
+      fileId,
+      uploadId,
+      existingLineCount
     )
     console.log('JSONL processing result:', result)
     
-    // 프로젝트 세션 상태 업데이트
-    if (result.success) {
-      await supabase
-        .from('project_sessions')
-        .update({ 
-          session_count: result.processedLines || 0,
-          processing_status: 'completed',
-          processed_lines: result.processedLines || 0
-        })
-        .eq('id', sessionId)
-    } else {
-      await supabase
-        .from('project_sessions')
-        .update({ 
-          processing_status: 'failed',
-          processing_error: result.error || 'Unknown error'
-        })
-        .eq('id', sessionId)
-    }
+    // 세션 카운트 업데이트
+    const { data: fileCount } = await supabase
+      .from('uploaded_files')
+      .select('id', { count: 'exact' })
+      .eq('upload_id', uploadId)
+    
+    await supabase
+      .from('uploads')
+      .update({
+        session_count: fileCount?.length || 0
+      })
+      .eq('id', uploadId)
     
     // API 키 사용 로그 기록
     await supabase
@@ -229,20 +272,81 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: 'File uploaded successfully',
-      sessionId,
-      processedLines: result.processedLines || 0,
-      newLines: result.newLines || 0,
-      errors: result.errors || 0
+      projectId: uploadId,
+      fileId: fileId,
+      processedLines: result.processedLines,
+      newLines: result.newLines,
+      errors: result.errors
     })
     
   } catch (error) {
-    console.error('Upload error:', error)
+    console.error('Upload API error:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { 
-        error: 'Upload failed', 
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    )
+  }
+}
+
+// GET: 업로드 상태 확인
+export async function GET(request: NextRequest) {
+  try {
+    // 헤더에서 API 키 추출
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      )
+    }
+    
+    const apiKey = authHeader.replace('Bearer ', '')
+    
+    // API 키 검증
+    const verification = await verifyApiKey(apiKey)
+    if (!verification.isValid) {
+      return NextResponse.json(
+        { error: verification.message || 'Invalid API key' },
+        { status: 401 }
+      )
+    }
+    
+    const supabase = await createClient()
+    
+    // 사용자의 프로젝트 목록 조회
+    const { data: uploads, error } = await supabase
+      .from('uploads')
+      .select(`
+        *,
+        uploaded_files (
+          id,
+          file_name,
+          file_size,
+          processed_lines,
+          processing_status,
+          uploaded_at
+        )
+      `)
+      .eq('user_id', verification.userId)
+      .order('uploaded_at', { ascending: false })
+    
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to fetch uploads' },
+        { status: 500 }
+      )
+    }
+    
+    return NextResponse.json({
+      success: true,
+      uploads: uploads || []
+    })
+    
+  } catch (error) {
+    console.error('Status API error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

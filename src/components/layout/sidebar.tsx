@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   Plus,
   History,
-  Users
+  Users,
+  Folder
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -36,6 +37,11 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
       label: t.sidebar.dashboard,
       icon: Home,
       href: "/",
+    },
+    {
+      label: locale === 'ko' ? '프로젝트' : 'Projects',
+      icon: Folder,
+      href: "/projects",
     },
     {
       label: t.sidebar.myPrompts,

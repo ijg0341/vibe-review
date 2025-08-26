@@ -40,19 +40,25 @@ interface TeamMember {
   last_upload?: string
 }
 
-interface Project {
+interface ProjectSession {
   id: string
-  project_name: string
-  project_path: string
-  session_count: number
+  project_id: string
+  session_name: string
+  file_name?: string
+  file_path?: string
   uploaded_at: string
   user_id: string
+  project?: {
+    id: string
+    name: string
+    description?: string
+  }
 }
 
 export default function TeamPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
-  const [memberProjects, setMemberProjects] = useState<Project[]>([])
+  const [memberSessions, setMemberSessions] = useState<ProjectSession[]>([])
   const [loading, setLoading] = useState(true)
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -85,15 +91,15 @@ export default function TeamPage() {
       const membersWithStats = await Promise.all(
         (profiles || []).map(async (profile) => {
           try {
-            // 프로젝트 수와 마지막 업로드 시간 조회
-            const { data: uploads, error: uploadsError } = await supabase
-              .from('uploads')
+            // 세션 수와 마지막 업로드 시간 조회
+            const { data: sessions, error: sessionsError } = await supabase
+              .from('project_sessions')
               .select('uploaded_at')
               .eq('user_id', profile.id)
               .order('uploaded_at', { ascending: false })
 
-            if (uploadsError) {
-              console.error('Error fetching uploads for user:', profile.id, uploadsError)
+            if (sessionsError) {
+              console.error('Error fetching sessions for user:', profile.id, sessionsError)
               return {
                 ...profile,
                 project_count: 0,
@@ -103,8 +109,8 @@ export default function TeamPage() {
 
             return {
               ...profile,
-              project_count: uploads?.length || 0,
-              last_upload: uploads?.[0]?.uploaded_at || null
+              project_count: sessions?.length || 0,
+              last_upload: sessions?.[0]?.uploaded_at || null
             }
           } catch (error) {
             console.error('Error fetching stats for user:', profile.id, error)
@@ -125,25 +131,28 @@ export default function TeamPage() {
     }
   }
 
-  // 선택한 멤버의 프로젝트 가져오기
-  const fetchMemberProjects = async (memberId: string) => {
+  // 선택한 멤버의 세션 가져오기
+  const fetchMemberSessions = async (memberId: string) => {
     try {
       setProjectsLoading(true)
       
-      const { data: projects, error } = await supabase
-        .from('uploads')
-        .select('*')
+      const { data: sessions, error } = await supabase
+        .from('project_sessions')
+        .select(`
+          *,
+          project:projects(*)
+        `)
         .eq('user_id', memberId)
         .order('uploaded_at', { ascending: false })
 
       if (error) {
-        console.error('Error fetching member projects:', error)
+        console.error('Error fetching member sessions:', error)
         return
       }
 
-      setMemberProjects(projects || [])
+      setMemberSessions(sessions || [])
     } catch (error) {
-      console.error('Error in fetchMemberProjects:', error)
+      console.error('Error in fetchMemberSessions:', error)
     } finally {
       setProjectsLoading(false)
     }
@@ -152,13 +161,13 @@ export default function TeamPage() {
   // 멤버 선택 핸들러
   const handleSelectMember = (member: TeamMember) => {
     setSelectedMember(member)
-    fetchMemberProjects(member.id)
+    fetchMemberSessions(member.id)
   }
 
-  // 프로젝트 상세 페이지로 이동
-  const handleViewProject = (projectId: string) => {
-    // 팀 프로젝트 보기용 별도 경로 사용
-    router.push(`/team/${selectedMember?.id}/${projectId}`)
+  // 세션 상세 페이지로 이동
+  const handleViewSession = (sessionId: string) => {
+    // 팀 세션 보기용 별도 경로 사용
+    router.push(`/team/${selectedMember?.id}/${sessionId}`)
   }
 
   useEffect(() => {
@@ -324,10 +333,10 @@ export default function TeamPage() {
                         <div>
                           <CardTitle>
                             {selectedMember.display_name || selectedMember.email}
-                            {locale === 'ko' ? '님의 프로젝트' : "'s Projects"}
+                            {locale === 'ko' ? '님의 세션' : "'s Sessions"}
                           </CardTitle>
                           <CardDescription>
-                            {memberProjects.length} {locale === 'ko' ? '개의 프로젝트' : 'projects'}
+                            {memberSessions.length} {locale === 'ko' ? '개의 세션' : 'sessions'}
                           </CardDescription>
                         </div>
                       </div>
@@ -338,38 +347,37 @@ export default function TeamPage() {
                       <div className="flex items-center justify-center py-12">
                         <Loader2 className="h-6 w-6 animate-spin" />
                       </div>
-                    ) : memberProjects.length === 0 ? (
+                    ) : memberSessions.length === 0 ? (
                       <div className="text-center py-12">
                         <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                         <p className="text-muted-foreground">
-                          {locale === 'ko' ? '프로젝트가 없습니다' : 'No projects found'}
+                          {locale === 'ko' ? '세션이 없습니다' : 'No sessions found'}
                         </p>
                       </div>
                     ) : (
                       <div className="grid gap-4">
-                        {memberProjects.map((project) => (
+                        {memberSessions.map((session) => (
                           <Card 
-                            key={project.id}
+                            key={session.id}
                             className="hover:shadow-md transition-shadow cursor-pointer"
-                            onClick={() => handleViewProject(project.id)}
+                            onClick={() => handleViewSession(session.id)}
                           >
                             <CardContent className="p-4">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-start gap-3 flex-1">
-                                  <Folder className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                  <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
                                   <div className="flex-1">
-                                    <h3 className="font-semibold">{project.project_name}</h3>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                      {project.project_path}
-                                    </p>
+                                    <h3 className="font-semibold">{session.session_name || session.file_name}</h3>
+                                    {session.project && (
+                                      <p className="text-sm text-muted-foreground mt-1">
+                                        <Folder className="inline h-3 w-3 mr-1" />
+                                        {session.project.name}
+                                      </p>
+                                    )}
                                     <div className="flex items-center gap-4 mt-2">
                                       <span className="text-xs text-muted-foreground">
-                                        <FileText className="inline h-3 w-3 mr-1" />
-                                        {project.session_count} {locale === 'ko' ? '세션' : 'sessions'}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
                                         <Calendar className="inline h-3 w-3 mr-1" />
-                                        {formatDate(project.uploaded_at)}
+                                        {formatDate(session.uploaded_at)}
                                       </span>
                                     </div>
                                   </div>
@@ -379,7 +387,7 @@ export default function TeamPage() {
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    handleViewProject(project.id)
+                                    handleViewSession(session.id)
                                   }}
                                 >
                                   {locale === 'ko' ? '보기' : 'View'}
@@ -400,8 +408,8 @@ export default function TeamPage() {
                       <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground">
                         {locale === 'ko' 
-                          ? '팀 멤버를 선택하여 프로젝트를 확인하세요' 
-                          : 'Select a team member to view their projects'
+                          ? '팀 멤버를 선택하여 세션을 확인하세요' 
+                          : 'Select a team member to view their sessions'
                         }
                       </p>
                     </div>

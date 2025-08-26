@@ -536,12 +536,12 @@ export default function ProjectDetailPage() {
                       </p>
                     </div>
                   ) : (
-                    sessionFiles.map((file) => (
+                    sessions.map((session) => (
                       <div
-                        key={file.id}
-                        onClick={() => setSelectedFile(file)}
+                        key={session.id}
+                        onClick={() => setSelectedSession(session)}
                         className={`p-3 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
-                          selectedFile?.id === file.id ? 'bg-muted/50 border-primary' : ''
+                          selectedSession?.id === session.id ? 'bg-muted/50 border-primary' : ''
                         }`}
                       >
                         <div className="flex items-start justify-between">
@@ -549,7 +549,7 @@ export default function ProjectDetailPage() {
                             <FileText className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                             <div className="space-y-1 flex-1 min-w-0">
                               {/* 첫 번째 대화 내용 표시 */}
-                              {file.firstMessage ? (
+                              {session.firstMessage ? (
                                 <p className="text-sm font-medium overflow-hidden" 
                                    style={{ 
                                      display: '-webkit-box',
@@ -557,20 +557,20 @@ export default function ProjectDetailPage() {
                                      WebkitBoxOrient: 'vertical',
                                      overflow: 'hidden'
                                    }}>
-                                  {file.firstMessage}
+                                  {session.firstMessage}
                                 </p>
                               ) : (
                                 <p className="text-sm font-medium text-muted-foreground italic">
                                   {locale === 'ko' ? '내용 없음' : 'No content'}
                                 </p>
                               )}
-                              {/* 파일 정보 */}
+                              {/* 세션 정보 */}
                               <div className="flex items-center gap-2 flex-wrap">
                                 {/* 세션 시간 표시 */}
-                                {file.sessionTimestamp && (
+                                {session.sessionTimestamp && (
                                   <span className="text-xs text-muted-foreground">
                                     <Clock className="inline h-3 w-3 mr-1" />
-                                    {new Date(file.sessionTimestamp).toLocaleString(
+                                    {new Date(session.sessionTimestamp).toLocaleString(
                                       locale === 'ko' ? 'ko-KR' : 'en-US', 
                                       { 
                                         month: 'short', 
@@ -582,14 +582,16 @@ export default function ProjectDetailPage() {
                                   </span>
                                 )}
                                 <span className="text-xs text-muted-foreground truncate">
-                                  {file.file_name}
+                                  {session.session_name || session.file_name}
                                 </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {formatFileSize(file.file_size)}
-                                </span>
+                                {session.file_size && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {formatFileSize(session.file_size)}
+                                  </span>
+                                )}
                                 <ProcessingStatusBadge 
-                                  status={file.processing_status} 
-                                  processedLines={file.processed_lines}
+                                  status={session.processing_status} 
+                                  processedLines={session.processed_lines}
                                 />
                               </div>
                             </div>
@@ -772,8 +774,8 @@ export default function ProjectDetailPage() {
                         {/* 하단 정보 바 */}
                         <div className="flex items-center justify-between pt-3 mt-3 border-t text-sm text-muted-foreground">
                           <div>
-                            {selectedFile && (
-                              <span className="font-medium">{selectedFile.file_name}</span>
+                            {selectedSession && (
+                              <span className="font-medium">{selectedSession.session_name || selectedSession.file_name}</span>
                             )}
                             <span className="mx-2">•</span>
                             {locale === 'ko' 

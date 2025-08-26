@@ -22,13 +22,13 @@ export class JSONLProcessor {
    */
   async processJSONLFile(
     fileContent: string,
-    fileId: string,
-    uploadId: string,
+    sessionId: string,
+    uploadId: string, // 호환성을 위해 유지, sessionId와 동일
     existingLineCount: number = 0
-  ): Promise<{ success: boolean; processedLines: number; errors: number; newLines: number }> {
+  ): Promise<{ success: boolean; processedLines: number; errors: number; newLines: number; error?: string }> {
     console.log('=== Starting JSONL Processing ===')
-    console.log('File ID:', fileId)
-    console.log('Upload ID:', uploadId)
+    console.log('Session ID:', sessionId)
+    console.log('Upload ID (same as session):', uploadId)
     console.log('Existing line count:', existingLineCount)
     
     const lines = fileContent.split('\n').filter(line => line.trim())
@@ -40,18 +40,18 @@ export class JSONLProcessor {
     console.log('Total lines in file:', lines.length)
     
     try {
-      // 파일 처리 상태를 'processing'으로 업데이트
-      console.log('Updating file status to processing...')
+      // 세션 처리 상태를 'processing'으로 업데이트
+      console.log('Updating session status to processing...')
       const { error: updateError } = await this.supabase
-        .from('uploaded_files')
+        .from('project_sessions')
         .update({ 
           processing_status: 'processing',
           processed_lines: existingLineCount 
         })
-        .eq('id', fileId)
+        .eq('id', sessionId)
       
-      console.log('File status update result:', updateError)
-      console.log(`Processing file with ${lines.length} total lines, ${existingLineCount} existing lines`)
+      console.log('Session status update result:', updateError)
+      console.log(`Processing session with ${lines.length} total lines, ${existingLineCount} existing lines`)
       
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim()
@@ -102,31 +102,32 @@ export class JSONLProcessor {
         // 100개씩 배치 삽입
         if (batch.length >= 100) {
           console.log(`Inserting batch of ${batch.length} lines...`)
-          await this.insertBatch(batch, fileId, uploadId)
+          await this.insertBatch(batch, sessionId, uploadId)
           batch.length = 0
           
           // 진행 상황 업데이트
           await this.supabase
-            .from('uploaded_files')
+            .from('project_sessions')
             .update({ processed_lines: lineNumber })
-            .eq('id', fileId)
+            .eq('id', sessionId)
         }
       }
       
       // 남은 배치 삽입
       if (batch.length > 0) {
         console.log(`Inserting final batch of ${batch.length} lines...`)
-        await this.insertBatch(batch, fileId, uploadId)
+        await this.insertBatch(batch, sessionId, uploadId)
       }
       
       // 처리 완료 상태 업데이트
       await this.supabase
-        .from('uploaded_files')
+        .from('project_sessions')
         .update({ 
           processing_status: 'completed',
-          processed_lines: lines.length
+          processed_lines: lines.length,
+          session_count: lines.length
         })
-        .eq('id', fileId)
+        .eq('id', sessionId)
       
       console.log(`Processed ${processedCount} lines, ${newLines} new, ${errorCount} errors`)
       
@@ -134,7 +135,8 @@ export class JSONLProcessor {
         success: true,
         processedLines: processedCount,
         errors: errorCount,
-        newLines: newLines
+        newLines: newLines,
+        error: undefined
       }
       
     } catch (error) {
@@ -142,18 +144,19 @@ export class JSONLProcessor {
       
       // 에러 상태 업데이트
       await this.supabase
-        .from('uploaded_files')
+        .from('project_sessions')
         .update({ 
           processing_status: 'error',
           processing_error: error instanceof Error ? error.message : 'Unknown error'
         })
-        .eq('id', fileId)
+        .eq('id', sessionId)
       
       return {
         success: false,
         processedLines: processedCount,
         errors: errorCount,
-        newLines: newLines
+        newLines: newLines,
+        error: error instanceof Error ? error.message : 'Unknown error'
       }
     }
   }
@@ -163,13 +166,13 @@ export class JSONLProcessor {
    */
   private async insertBatch(
     batch: ProcessedLine[],
-    fileId: string,
+    sessionId: string,
     uploadId: string
   ): Promise<void> {
     console.log(`Preparing to insert ${batch.length} records...`)
     const records = batch.map(line => ({
-      upload_id: uploadId,
-      file_id: fileId,
+      upload_id: uploadId, // sessionId와 동일
+      file_id: sessionId, // 호환성을 위해 유지, 실제로는 sessionId
       line_number: line.line_number,
       content: line.content,
       raw_text: line.raw_text,
@@ -196,17 +199,17 @@ export class JSONLProcessor {
   }
   
   /**
-   * 파일의 처리 상태 확인
+   * 세션의 처리 상태 확인
    */
-  async getProcessingStatus(fileId: string): Promise<{
+  async getProcessingStatus(sessionId: string): Promise<{
     status: string
     processedLines: number
     error?: string
   } | null> {
     const { data, error } = await this.supabase
-      .from('uploaded_files')
+      .from('project_sessions')
       .select('processing_status, processed_lines, processing_error')
-      .eq('id', fileId)
+      .eq('id', sessionId)
       .single()
     
     if (error) {

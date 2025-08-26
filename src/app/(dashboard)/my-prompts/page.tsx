@@ -8,7 +8,6 @@ import { useLocaleStore } from '@/lib/locale-store'
 import { useTranslation } from '@/lib/translations'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { ProtectedRoute } from '@/components/auth/protected-route'
-import { UploadModal } from '@/components/upload/upload-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +19,6 @@ import {
   Calendar, 
   Folder,
   Eye,
-  Upload,
   Clock
 } from 'lucide-react'
 
@@ -46,7 +44,6 @@ export default function MyPromptsPage() {
   const [filteredUploads, setFilteredUploads] = useState<Upload[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
-  const [uploadModalOpen, setUploadModalOpen] = useState(false)
   
   const router = useRouter()
   const { user } = useAuth()
@@ -136,7 +133,7 @@ export default function MyPromptsPage() {
 
   return (
     <ProtectedRoute>
-      <DashboardLayout onUploadClick={() => setUploadModalOpen(true)}>
+      <DashboardLayout>
         <div className="space-y-6">
           {/* 헤더 */}
           <div className="flex items-center justify-between">
@@ -149,10 +146,6 @@ export default function MyPromptsPage() {
                 }
               </p>
             </div>
-            <Button onClick={() => setUploadModalOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />
-              {t.dashboard.uploadHistory}
-            </Button>
           </div>
 
           {/* 통계 카드 */}
@@ -300,11 +293,6 @@ export default function MyPromptsPage() {
         </div>
       </DashboardLayout>
 
-      {/* 업로드 모달 */}
-      <UploadModal 
-        open={uploadModalOpen} 
-        onOpenChange={setUploadModalOpen} 
-      />
     </ProtectedRoute>
   )
 }
