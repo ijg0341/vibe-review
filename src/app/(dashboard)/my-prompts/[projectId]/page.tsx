@@ -102,10 +102,9 @@ export default function ProjectDetailPage() {
       
       // 프로젝트 정보 조회
       const { data: projectData, error: projectError } = await supabase
-        .from('uploads')
+        .from('projects')
         .select('*')
         .eq('id', projectId)
-        .eq('user_id', user.id)
         .single()
 
       if (projectError) {
@@ -114,13 +113,27 @@ export default function ProjectDetailPage() {
         return
       }
 
+      // 사용자가 해당 프로젝트의 멤버인지 확인
+      const { data: memberCheck } = await supabase
+        .from('project_members')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (!memberCheck) {
+        console.error('User is not a member of this project')
+        router.push('/my-prompts')
+        return
+      }
+
       setProject(projectData)
 
-      // 세션 파일 목록 조회
+      // 프로젝트의 세션 목록 조회
       const { data: filesData, error: filesError } = await supabase
-        .from('uploaded_files')
+        .from('project_sessions')
         .select('*')
-        .eq('upload_id', projectId)
+        .eq('project_id', projectId)
         .order('uploaded_at', { ascending: false })
 
       if (filesError) {

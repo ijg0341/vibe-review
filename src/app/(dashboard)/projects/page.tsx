@@ -69,7 +69,6 @@ export default function ProjectsPage() {
         .from('projects')
         .select(`
           *,
-          owner:profiles!projects_owner_id_fkey(email, display_name),
           project_members(count),
           project_sessions(*)
         `)
@@ -77,35 +76,18 @@ export default function ProjectsPage() {
 
       if (projectsError) {
         console.error('Error fetching projects:', projectsError)
-        // Fallback to simple query
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*, owner:profiles!owner_id(email, display_name)')
-          .order('created_at', { ascending: false })
-        
-        if (error) {
-          console.error('Error fetching projects fallback:', error)
-          return
-        }
-        
-        // Process fallback data
-        const fallbackProjects = (data || []).map(project => ({
-          id: project.id,
-          name: project.name,
-          folder_path: project.folder_path,
-          description: project.description,
-          owner_id: project.owner_id,
-          created_at: project.created_at,
-          member_count: 1,
-          session_count: 0,
-          last_activity: project.created_at,
-          owner_email: project.owner?.email,
-          owner_name: project.owner?.display_name
-        }))
-        
-        setProjects(fallbackProjects)
-        setFilteredProjects(fallbackProjects)
         return
+      }
+      
+      // Fetch owner profiles separately
+      const ownerIds = [...new Set(projectsData?.map(p => p.owner_id) || [])]
+      const { data: ownerProfiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, email, display_name')
+        .in('id', ownerIds)
+      
+      if (profilesError) {
+        console.error('Error fetching owner profiles:', profilesError)
       }
 
       // Process the data
@@ -114,6 +96,9 @@ export default function ProjectsPage() {
         const lastSession = sessions.sort((a: any, b: any) => 
           new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
         )[0]
+        
+        // Find owner profile
+        const ownerProfile = ownerProfiles?.find(p => p.id === project.owner_id)
 
         return {
           id: project.id,
@@ -125,8 +110,8 @@ export default function ProjectsPage() {
           member_count: project.project_members?.[0]?.count || 1,
           session_count: sessions.length,
           last_activity: lastSession?.uploaded_at,
-          owner_email: project.owner?.email,
-          owner_name: project.owner?.display_name,
+          owner_email: ownerProfile?.email,
+          owner_name: ownerProfile?.display_name,
           last_uploader_id: lastSession?.user_id
         }
       }) || []

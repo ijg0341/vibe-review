@@ -228,23 +228,33 @@ export default function ProjectDetailPage() {
     }
   }, [projectId])
 
-  // 프로젝트 경로를 Claude 히스토리 경로로 변환
-  const convertToClaudePath = (projectPath: string) => {
-    const cleanPath = projectPath
-      .replace(/\/$/, '') // 끝 슬래시 제거
-      .replace(/\//g, '-') // 모든 슬래시를 대시로 변환 (맨 앞 슬래시도 포함)
+  // 프로젝트 경로를 Claude 히스토리 경로로 변환 (사용자별로 다른 경로)
+  const getClaudeHistoryPath = () => {
+    // Claude 히스토리는 사용자의 홈 디렉토리 기반
+    // 프로젝트 경로 그대로 사용하되, 슬래시를 대시로 변환
+    const cleanPath = project?.folder_path
+      ?.replace(/^~/, '') // 홈 디렉토리 기호 제거
+      ?.replace(/\/$/, '') // 끝 슬래시 제거
+      ?.replace(/\//g, '-') // 모든 슬래시를 대시로 변환
+    
     return `~/.claude/projects/${cleanPath}`
+  }
+
+  // CLI 명령어 생성
+  const getCLICommand = () => {
+    if (!project) return ''
+    const claudePath = getClaudeHistoryPath()
+    return `vibe-upload ${claudePath} --project-id=${project.id}`
   }
 
   // CLI 명령어 복사
   const copyCLICommand = () => {
-    if (!project) return
-    
-    const claudePath = convertToClaudePath(project.folder_path)
-    const command = `vibe-upload ${claudePath} --project-id=${project.id}`
-    navigator.clipboard.writeText(command)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    const command = getCLICommand()
+    if (command) {
+      navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
   }
 
   // 날짜 포맷팅
@@ -367,7 +377,7 @@ export default function ProjectDetailPage() {
             <CardContent>
               <div className="relative">
                 <pre className="p-4 bg-muted rounded-lg text-sm font-mono overflow-x-auto">
-                  <code>vibe-upload {convertToClaudePath(project.folder_path)} --project-id={project.id}</code>
+                  <code>{getCLICommand()}</code>
                 </pre>
                 <Button
                   size="sm"
@@ -382,6 +392,14 @@ export default function ProjectDetailPage() {
                   )}
                 </Button>
               </div>
+              <Alert className="mt-3">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  {locale === 'ko' 
+                    ? '이 명령어는 현재 프로젝트 경로를 기반으로 생성됩니다. Claude 히스토리 경로는 사용자의 실제 프로젝트 위치에 따라 자동으로 결정됩니다.'
+                    : 'This command is generated based on your project path. The Claude history path is automatically determined based on your actual project location.'}
+                </AlertDescription>
+              </Alert>
             </CardContent>
           </Card>
 

@@ -129,22 +129,22 @@ export default function SettingsPage() {
       
       if (error) {
         console.error('Error fetching settings:', error)
-        // 테이블이 없는 경우 폴백
-        const { data: uploads } = await supabase
-          .from('uploads')
-          .select('project_path')
+        // 테이블이 없는 경우 프로젝트에서 폴백
+        const { data: projectMembers } = await supabase
+          .from('project_members')
+          .select('project_id')
           .eq('user_id', user.id)
-          .order('uploaded_at', { ascending: false })
           .limit(1)
 
-        if (uploads && uploads.length > 0) {
-          const lastPath = uploads[0].project_path
-          if (lastPath) {
-            const pathMatch = lastPath.match(/Users-([^-]+)-(.+?)(?:-|$)/)
-            if (pathMatch) {
-              const workDir = `/Users/${pathMatch[1]}/${pathMatch[2]}`
-              setProjectPath(workDir)
-            }
+        if (projectMembers && projectMembers.length > 0) {
+          const { data: project } = await supabase
+            .from('projects')
+            .select('folder_path')
+            .eq('id', projectMembers[0].project_id)
+            .single()
+          
+          if (project?.folder_path) {
+            setProjectPath(project.folder_path)
           }
         }
       } else if (settings) {

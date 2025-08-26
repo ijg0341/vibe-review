@@ -105,9 +105,45 @@ This document describes the database schema for the SecondTeam Vibe Review appli
 - last_activity (timestamp): 최근 활동 시간
 ```
 
+### 9. api_keys
+**Purpose**: API 키 관리
+```sql
+- id (uuid, PK): API 키 ID
+- user_id (uuid, FK): 사용자 ID (auth.users 참조)
+- key_hash (text, UNIQUE): 해시된 API 키
+- key_prefix (text): API 키 접두사 (표시용)
+- name (text): API 키 이름
+- description (text): API 키 설명
+- last_used_at (timestamp): 마지막 사용 시간
+- usage_count (integer): 사용 횟수
+- is_active (boolean): 활성화 상태
+- created_at (timestamp): 생성 시간
+- expires_at (timestamp): 만료 시간
+```
+
+### 10. api_key_logs
+**Purpose**: API 키 사용 로그
+```sql
+- id (uuid, PK): 로그 ID
+- api_key_id (uuid, FK): API 키 ID (api_keys.id 참조)
+- action (text): 실행된 작업
+- ip_address (inet): 요청 IP 주소
+- user_agent (text): User Agent
+- request_path (text): 요청 경로
+- request_method (text): HTTP 메소드
+- response_status (integer): 응답 상태 코드
+- created_at (timestamp): 로그 생성 시간
+```
+
 ## 관계 다이어그램
 
 ```
+auth.users (1) ───┬──── (1) profiles
+                  │
+                  └──── (N) api_keys
+                              │
+                              └──── (N) api_key_logs
+
 profiles (1) ─────┬──── (N) user_profiles
                   │
                   ├──── (N) user_settings
@@ -129,6 +165,8 @@ projects (1) ─────┬──────────┤
 - Foreign Key 제약으로 데이터 무결성 보장
 - RLS (Row Level Security) 정책으로 데이터 접근 제어
 - project_stats는 실시간 집계를 위한 뷰
+- api_keys.key_hash는 유니크 제약으로 중복 방지
+- api_keys는 (user_id, name) 조합으로 유니크 제약
 
 ## 주요 사용 패턴
 
@@ -136,3 +174,5 @@ projects (1) ─────┬──────────┤
 2. **세션 업로드**: project_sessions 생성 후 session_lines에 JSONL 데이터 저장
 3. **팀 협업**: project_members를 통한 권한 관리
 4. **통계 조회**: project_stats 뷰를 통한 실시간 통계 확인
+5. **API 인증**: api_keys를 통한 CLI/API 접근 인증
+6. **API 사용 추적**: api_key_logs를 통한 사용 내역 모니터링

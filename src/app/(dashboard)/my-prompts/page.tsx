@@ -22,26 +22,30 @@ import {
   Clock
 } from 'lucide-react'
 
-interface Upload {
+interface ProjectWithSessions {
   id: string
-  project_name: string
-  project_path: string
-  session_count: number
-  uploaded_at: string
-  files?: UploadedFile[]
-  last_modified?: string // 가장 최근 파일의 수정일
+  name: string
+  folder_path: string
+  description?: string
+  owner_id: string
+  created_at: string
+  sessions?: ProjectSession[]
+  last_modified?: string // 가장 최근 세션의 업로드일
 }
 
-interface UploadedFile {
+interface ProjectSession {
   id: string
-  file_name: string
-  file_path: string
+  project_id: string
+  user_id: string
+  session_name?: string
+  session_count: number
   uploaded_at: string
+  metadata?: any
 }
 
 export default function MyPromptsPage() {
-  const [uploads, setUploads] = useState<Upload[]>([])
-  const [filteredUploads, setFilteredUploads] = useState<Upload[]>([])
+  const [projects, setProjects] = useState<ProjectWithSessions[]>([])
+  const [filteredProjects, setFilteredProjects] = useState<ProjectWithSessions[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   
@@ -51,49 +55,68 @@ export default function MyPromptsPage() {
   const t = useTranslation(locale)
   const supabase = createClient()
 
-  // 업로드된 프로젝트 목록 조회
+  // 프로젝트 및 세션 목록 조회
   const fetchUploads = async () => {
     if (!user?.id) return
 
     try {
       setLoading(true)
       
-      // uploads 테이블에서 프로젝트 목록 조회
-      const { data: uploadsData, error: uploadsError } = await supabase
-        .from('uploads')
-        .select('*')
+      // 사용자가 멤버인 프로젝트 목록 조회
+      const { data: memberData, error: memberError } = await supabase
+        .from('project_members')
+        .select('project_id')
         .eq('user_id', user.id)
-        .order('uploaded_at', { ascending: false })
 
-      if (uploadsError) {
-        console.error('Error fetching uploads:', uploadsError)
+      if (memberError) {
+        console.error('Error fetching project members:', memberError)
         return
       }
 
-      // 각 프로젝트의 파일 목록도 함께 조회
-      const uploadsWithFiles = await Promise.all(
-        (uploadsData || []).map(async (upload) => {
-          const { data: filesData } = await supabase
-            .from('uploaded_files')
+      const projectIds = memberData?.map(m => m.project_id) || []
+      
+      if (projectIds.length === 0) {
+        setProjects([])
+        setFilteredProjects([])
+        return
+      }
+
+      // 프로젝트 정보 조회
+      const { data: projectsData, error: projectsError } = await supabase
+        .from('projects')
+        .select('*')
+        .in('id', projectIds)
+        .order('created_at', { ascending: false })
+
+      if (projectsError) {
+        console.error('Error fetching projects:', projectsError)
+        return
+      }
+
+      // 각 프로젝트의 세션 목록도 함께 조회
+      const projectsWithSessions = await Promise.all(
+        (projectsData || []).map(async (project) => {
+          const { data: sessionsData } = await supabase
+            .from('project_sessions')
             .select('*')
-            .eq('upload_id', upload.id)
+            .eq('project_id', project.id)
             .order('uploaded_at', { ascending: false })
 
-          // 가장 최근 파일의 uploaded_at을 last_modified로 사용
-          const lastModified = filesData && filesData.length > 0 
-            ? filesData[0].uploaded_at 
-            : upload.uploaded_at
+          // 가장 최근 세션의 uploaded_at을 last_modified로 사용
+          const lastModified = sessionsData && sessionsData.length > 0 
+            ? sessionsData[0].uploaded_at 
+            : project.created_at
 
           return {
-            ...upload,
-            files: filesData || [],
+            ...project,
+            sessions: sessionsData || [],
             last_modified: lastModified
           }
         })
       )
 
-      setUploads(uploadsWithFiles)
-      setFilteredUploads(uploadsWithFiles)
+      setProjects(projectsWithSessions)
+      setFilteredProjects(projectsWithSessions)
     } catch (error) {
       console.error('Error in fetchUploads:', error)
     } finally {
@@ -104,18 +127,19 @@ export default function MyPromptsPage() {
   // 검색 필터링
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setFilteredUploads(uploads)
+      setFilteredProjects(projects)
       return
     }
 
-    const filtered = uploads.filter(upload => 
-      upload.project_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      upload.files?.some(file => 
-        file.file_name.toLowerCase().includes(searchQuery.toLowerCase())
+    const filtered = projects.filter(project => 
+      project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.folder_path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.sessions?.some(session => 
+        session.session_name?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     )
-    setFilteredUploads(filtered)
-  }, [searchQuery, uploads])
+    setFilteredProjects(filtered)
+  }, [searchQuery, projects])
 
   useEffect(() => {
     fetchUploads()
@@ -158,7 +182,7 @@ export default function MyPromptsPage() {
                 <Folder className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{uploads.length}</div>
+                <div className="text-2xl font-bold">{projects.length}</div>
                 <p className="text-xs text-muted-foreground">
                   {locale === 'ko' ? '업로드된 프로젝트' : 'Uploaded projects'}
                 </p>
@@ -174,7 +198,7 @@ export default function MyPromptsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {uploads.reduce((total, upload) => total + (upload.files?.length || 0), 0)}
+                  {projects.reduce((total, project) => total + (project.sessions?.length || 0), 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {locale === 'ko' ? 'JSONL 파일' : 'JSONL files'}
@@ -191,10 +215,10 @@ export default function MyPromptsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {uploads.length > 0 ? formatDate(uploads[0].uploaded_at) : '-'}
+                  {projects.length > 0 && projects[0].last_modified ? formatDate(projects[0].last_modified) : '-'}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {uploads.length > 0 ? uploads[0].project_name : (locale === 'ko' ? '업로드 없음' : 'No uploads')}
+                  {projects.length > 0 ? projects[0].name : (locale === 'ko' ? '프로젝트 없음' : 'No projects')}
                 </p>
               </CardContent>
             </Card>
@@ -231,7 +255,7 @@ export default function MyPromptsPage() {
                     </p>
                   </div>
                 </div>
-              ) : filteredUploads.length === 0 ? (
+              ) : filteredProjects.length === 0 ? (
                 <div className="text-center py-8">
                   <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-medium">
@@ -249,11 +273,11 @@ export default function MyPromptsPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredUploads.map((upload) => (
+                  {filteredProjects.map((project) => (
                     <Card 
-                      key={upload.id} 
+                      key={project.id} 
                       className="hover:shadow-lg transition-shadow cursor-pointer"
-                      onClick={() => router.push(`/my-prompts/${upload.id}`)}
+                      onClick={() => router.push(`/my-prompts/${project.id}`)}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
@@ -263,23 +287,23 @@ export default function MyPromptsPage() {
                             </AvatarFallback>
                           </Avatar>
                           <Badge variant="secondary" className="text-xs">
-                            {upload.session_count} {locale === 'ko' ? '세션' : 'sessions'}
+                            {project.sessions?.length || 0} {locale === 'ko' ? '세션' : 'sessions'}
                           </Badge>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-2">
-                        <h3 className="font-semibold text-lg truncate" title={upload.project_name}>
-                          {upload.project_name}
+                        <h3 className="font-semibold text-lg truncate" title={project.name}>
+                          {project.name}
                         </h3>
                         <div className="space-y-1 text-sm text-muted-foreground">
                           <div className="flex items-center gap-2">
                             <FileText className="h-3 w-3" />
-                            <span>{upload.files?.length || 0} {locale === 'ko' ? '파일' : 'files'}</span>
+                            <span>{project.sessions?.length || 0} {locale === 'ko' ? '세션' : 'sessions'}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Clock className="h-3 w-3" />
                             <span>
-                              {locale === 'ko' ? '최근 수정' : 'Last modified'}: {formatDate(upload.last_modified || upload.uploaded_at)}
+                              {locale === 'ko' ? '최근 수정' : 'Last modified'}: {formatDate(project.last_modified || project.created_at)}
                             </span>
                           </div>
                         </div>
