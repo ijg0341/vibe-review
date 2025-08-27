@@ -48,17 +48,24 @@ async function configureApiKey(apiKey, serverUrl) {
 }
 
 // JSONL 파일 업로드
-async function uploadFile(filePath, projectName, config) {
+async function uploadFile(filePath, projectName, config, projectId) {
   const fileName = path.basename(filePath);
   const content = await fs.readFile(filePath, 'utf-8');
   
+  const requestBody = {
+    projectName,
+    fileName,
+    content
+  };
+  
+  // projectId가 제공된 경우 추가
+  if (projectId) {
+    requestBody.projectId = projectId;
+  }
+  
   const response = await axios.post(
     `${config.serverUrl}/api/upload`,
-    {
-      projectName,
-      fileName,
-      content
-    },
+    requestBody,
     {
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -140,7 +147,7 @@ async function uploadCommand(targetPath, options) {
         const uploadSpinner = ora(`Uploading ${fileName}...`).start();
         
         try {
-          const result = await uploadFile(file, projectName, config);
+          const result = await uploadFile(file, projectName, config, options.projectId);
           
           if (result.newLines > 0) {
             uploadSpinner.succeed(

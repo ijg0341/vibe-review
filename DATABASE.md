@@ -135,6 +135,47 @@ This document describes the database schema for the SecondTeam Vibe Review appli
 - created_at (timestamp): 로그 생성 시간
 ```
 
+### 11. project_reviews
+**Purpose**: 프로젝트 세션 리뷰
+```sql
+- id (uuid, PK): 리뷰 ID
+- project_id (uuid, FK): 프로젝트 ID (projects.id 참조)
+- reviewer_id (uuid, FK): 리뷰어 ID (auth.users 참조)
+- session_ids (uuid[]): 리뷰 대상 세션 ID 배열
+- review_title (varchar): 리뷰 제목
+- review_content (text): 리뷰 내용
+- rating (integer): 평점 (1-5)
+- review_date (date): 리뷰 대상 날짜
+- created_at (timestamp): 생성 시간
+- updated_at (timestamp): 수정 시간
+```
+
+### 12. review_requests
+**Purpose**: 리뷰 요청 관리
+```sql
+- id (uuid, PK): 리뷰 요청 ID
+- requester_id (uuid, FK): 요청자 ID (profiles.id 참조)
+- title (varchar): 리뷰 요청 제목
+- content (text): 리뷰 요청 내용
+- session_ids (uuid[]): 관련 세션 ID 배열
+- reviewer_ids (uuid[]): 지정된 리뷰어 ID 배열
+- status (varchar): 상태 (pending, in_progress, completed, cancelled)
+- created_at (timestamp): 생성 시간
+- updated_at (timestamp): 수정 시간
+```
+
+### 13. review_responses
+**Purpose**: 리뷰 요청에 대한 응답 (여러 개 작성 가능)
+```sql
+- id (uuid, PK): 리뷰 응답 ID
+- request_id (uuid, FK): 리뷰 요청 ID (review_requests.id 참조)
+- reviewer_id (uuid, FK): 리뷰어 ID (profiles.id 참조)
+- content (text): 리뷰 내용
+- rating (integer): 평점 (1-5)
+- created_at (timestamp): 생성 시간
+- updated_at (timestamp): 수정 시간
+```
+
 ## 관계 다이어그램
 
 ```
@@ -150,13 +191,21 @@ profiles (1) ─────┬──── (N) user_profiles
                   │
                   ├──── (N) projects (owner)
                   │
-                  └──── (N) project_members
+                  ├──── (N) project_members
+                  │
+                  ├──── (N) review_requests (requester)
+                  │
+                  └──── (N) review_responses (reviewer)
                               │
 projects (1) ─────┬──────────┤
+                  │          │
+                  │          └──── (N) project_reviews
                   │
                   └──── (N) project_sessions
                               │
                               └──── (N) session_lines
+
+review_requests (1) ──── (N) review_responses
 ```
 
 ## 인덱스 및 제약사항
@@ -176,3 +225,6 @@ projects (1) ─────┬──────────┤
 4. **통계 조회**: project_stats 뷰를 통한 실시간 통계 확인
 5. **API 인증**: api_keys를 통한 CLI/API 접근 인증
 6. **API 사용 추적**: api_key_logs를 통한 사용 내역 모니터링
+7. **세션 리뷰**: project_reviews를 통한 일별 세션 리뷰 및 피드백 관리
+8. **리뷰 요청**: review_requests를 통한 특정 세션에 대한 리뷰 요청
+9. **리뷰 응답**: review_responses를 통한 리뷰 요청에 대한 피드백 제공

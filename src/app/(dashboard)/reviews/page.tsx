@@ -31,8 +31,10 @@ import {
   XCircle,
   Send,
   ChevronRight,
-  Star
+  Star,
+  ExternalLink
 } from 'lucide-react'
+import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { ko, enUS } from 'date-fns/locale'
 
@@ -337,15 +339,22 @@ export default function ReviewsPage() {
                   <Card key={request.id} className="hover:shadow-lg transition-all">
                     <CardHeader>
                       <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            {request.title}
-                            {isMyRequest(request) && (
-                              <Badge variant="secondary" className="text-xs">
-                                {locale === 'ko' ? '내 요청' : 'My Request'}
-                              </Badge>
-                            )}
-                          </CardTitle>
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-start justify-between">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              {request.title}
+                              {isMyRequest(request) && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {locale === 'ko' ? '내 요청' : 'My Request'}
+                                </Badge>
+                              )}
+                            </CardTitle>
+                            <Link href={`/reviews/${request.id}`}>
+                              <Button variant="ghost" size="sm">
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                          </div>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Avatar className="h-5 w-5">
                               <AvatarImage src={request.requester?.avatar_url} />
@@ -361,7 +370,9 @@ export default function ReviewsPage() {
                             <span>{formatDate(request.created_at)}</span>
                           </div>
                         </div>
-                        {getStatusBadge(request.status)}
+                        <div className="ml-4">
+                          {getStatusBadge(request.status)}
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -499,15 +510,30 @@ export default function ReviewsPage() {
                           </div>
                         </div>
                       ) : !isMyRequest(request) ? (
-                        <Button
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => setSelectedRequest(request)}
-                        >
-                          <PenSquare className="mr-2 h-4 w-4" />
-                          {locale === 'ko' ? '리뷰 작성' : 'Write Review'}
-                        </Button>
-                      ) : null}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => setSelectedRequest(request)}
+                          >
+                            <PenSquare className="mr-2 h-4 w-4" />
+                            {locale === 'ko' ? '리뷰 작성' : 'Write Review'}
+                          </Button>
+                          <Link href={`/reviews/${request.id}`}>
+                            <Button variant="outline">
+                              {locale === 'ko' ? '상세보기' : 'View Details'}
+                              <ChevronRight className="ml-1 h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <Link href={`/reviews/${request.id}`} className="block">
+                          <Button variant="outline" className="w-full">
+                            {locale === 'ko' ? '상세보기' : 'View Details'}
+                            <ChevronRight className="ml-1 h-4 w-4" />
+                          </Button>
+                        </Link>
+                      )}
                     </CardContent>
                   </Card>
                 ))

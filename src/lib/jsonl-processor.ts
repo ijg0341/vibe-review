@@ -25,7 +25,7 @@ export class JSONLProcessor {
     sessionId: string,
     uploadId: string, // 호환성을 위해 유지, sessionId와 동일
     existingLineCount: number = 0
-  ): Promise<{ success: boolean; processedLines: number; errors: number; newLines: number; error?: string }> {
+  ): Promise<{ success: boolean; processedLines: number; errors: number; newLines: number; error?: string; sessionDates?: { start: string | null; end: string | null } }> {
     console.log('=== Starting JSONL Processing ===')
     console.log('Session ID:', sessionId)
     console.log('Upload ID (same as session):', uploadId)
@@ -36,6 +36,8 @@ export class JSONLProcessor {
     let processedCount = 0
     let errorCount = 0
     let newLines = 0
+    let minTimestamp: Date | null = null
+    let maxTimestamp: Date | null = null
     
     console.log('Total lines in file:', lines.length)
     
@@ -84,6 +86,20 @@ export class JSONLProcessor {
           }
           if (json.timestamp) {
             processedLine.message_timestamp = json.timestamp
+            // 타임스탬프를 파싱하여 최소/최대 날짜 추적
+            try {
+              const timestamp = new Date(json.timestamp)
+              if (!isNaN(timestamp.getTime())) {
+                if (!minTimestamp || timestamp < minTimestamp) {
+                  minTimestamp = timestamp
+                }
+                if (!maxTimestamp || timestamp > maxTimestamp) {
+                  maxTimestamp = timestamp
+                }
+              }
+            } catch (e) {
+              // 타임스탬프 파싱 실패 무시
+            }
           }
           if (json.metadata) {
             processedLine.metadata = json.metadata
@@ -120,13 +136,23 @@ export class JSONLProcessor {
       }
       
       // 처리 완료 상태 업데이트
+      const updateData: any = { 
+        processing_status: 'completed',
+        processed_lines: lines.length,
+        session_count: lines.length
+      }
+      
+      // 세션 날짜 정보 추가
+      if (minTimestamp) {
+        updateData.session_start_date = minTimestamp.toISOString().split('T')[0]
+      }
+      if (maxTimestamp) {
+        updateData.session_end_date = maxTimestamp.toISOString().split('T')[0]
+      }
+      
       await this.supabase
         .from('project_sessions')
-        .update({ 
-          processing_status: 'completed',
-          processed_lines: lines.length,
-          session_count: lines.length
-        })
+        .update(updateData)
         .eq('id', sessionId)
       
       console.log(`Processed ${processedCount} lines, ${newLines} new, ${errorCount} errors`)
@@ -136,7 +162,11 @@ export class JSONLProcessor {
         processedLines: processedCount,
         errors: errorCount,
         newLines: newLines,
-        error: undefined
+        error: undefined,
+        sessionDates: {
+          start: minTimestamp ? minTimestamp.toISOString() : null,
+          end: maxTimestamp ? maxTimestamp.toISOString() : null
+        }
       }
       
     } catch (error) {

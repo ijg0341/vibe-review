@@ -334,7 +334,12 @@ if (args[0] === 'config') {
   // Check for --project-id option
   let projectId = null;
   for (let i = 1; i < args.length; i++) {
-    if (args[i] === '--project-id' && args[i + 1]) {
+    if (args[i].startsWith('--project-id=')) {
+      // Handle --project-id=VALUE format
+      projectId = args[i].substring('--project-id='.length);
+      break;
+    } else if (args[i] === '--project-id' && args[i + 1]) {
+      // Handle --project-id VALUE format
       projectId = args[i + 1];
       break;
     }
