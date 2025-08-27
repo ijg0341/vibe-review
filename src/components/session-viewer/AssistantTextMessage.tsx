@@ -33,8 +33,8 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
         const code = part.slice(3, -3)
         const [lang, ...codeLines] = code.split('\n')
         return (
-          <pre key={index} className="bg-gray-900 dark:bg-black rounded-md p-3 my-2 overflow-x-auto">
-            <code className="text-xs text-gray-300 font-mono">
+          <pre key={index} className="bg-gray-900 dark:bg-black rounded-md p-3 my-2 overflow-x-hidden">
+            <code className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-words">
               {codeLines.join('\n')}
             </code>
           </pre>

@@ -23,18 +23,50 @@ interface SessionViewerV2Props {
   lines: SessionLine[]
   viewMode?: 'structured' | 'raw'
   locale?: 'ko' | 'en'
+  messageTypeFilter?: string[]
 }
 
 export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({ 
   lines, 
   viewMode = 'structured',
-  locale = 'ko' 
+  locale = 'ko',
+  messageTypeFilter = []
 }) => {
+  
+  // Helper to get message type for filtering
+  const getMessageType = (data: any): string => {
+    if (data.type === 'user') {
+      const content = data.message?.content
+      if (Array.isArray(content) && content.some(item => item.type === 'tool_result')) {
+        return 'tool_result'
+      }
+      return 'user_text'
+    }
+    
+    if (data.type === 'assistant') {
+      const content = data.message?.content
+      if (Array.isArray(content)) {
+        if (content.some(item => item.type === 'thinking')) return 'thinking'
+        if (content.some(item => item.type === 'tool_use')) return 'tool_use'
+        if (content.some(item => item.type === 'text')) return 'assistant_text'
+      }
+    }
+    
+    return 'other'
+  }
   
   const renderStructuredLine = (line: SessionLine) => {
     try {
       // Parse the JSON data
       const data = line.content || JSON.parse(line.raw_text)
+      
+      // Apply message type filter if provided
+      if (messageTypeFilter.length > 0) {
+        const messageType = getMessageType(data)
+        if (!messageTypeFilter.includes(messageType)) {
+          return null
+        }
+      }
       
       // Determine message type and render appropriate component
       if (data.type === 'user') {
@@ -102,7 +134,7 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
               <div className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">
                 Parse Error (Line {line.line_number})
               </div>
-              <pre className="text-xs text-red-500 dark:text-red-400 overflow-x-auto">
+              <pre className="text-xs text-red-500 dark:text-red-400 whitespace-pre-wrap break-words">
                 {line.raw_text.substring(0, 500)}...
               </pre>
             </div>
@@ -115,7 +147,7 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   const renderRawView = () => {
     return (
       <Card className="p-4 bg-gray-900 dark:bg-black border-gray-700 dark:border-gray-800">
-        <pre className="text-xs whitespace-pre-wrap break-all font-mono text-gray-300">
+        <pre className="text-xs whitespace-pre-wrap break-words font-mono text-gray-300">
           {lines.map(line => line.raw_text).join('\n')}
         </pre>
       </Card>
@@ -127,8 +159,8 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   }
   
   return (
-    <div className="space-y-6">
-      {lines.map(line => renderStructuredLine(line))}
+    <div className="space-y-6 max-w-full overflow-hidden">
+      {lines.map(line => renderStructuredLine(line)).filter(Boolean)}
     </div>
   )
 }

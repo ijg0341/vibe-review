@@ -32,26 +32,16 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
 
-  const routes = [
+  const routes: Array<{
+    label: string
+    icon: any
+    href: string
+    badge?: string
+  }> = [
     {
-      label: t.sidebar.dashboard,
-      icon: Home,
-      href: "/",
-    },
-    {
-      label: locale === 'ko' ? '프로젝트' : 'Projects',
-      icon: Folder,
-      href: "/projects",
-    },
-    {
-      label: t.sidebar.myPrompts,
-      icon: History,
-      href: "/my-prompts",
-    },
-    {
-      label: t.sidebar.reviews,
-      icon: MessageSquare,
-      href: "/reviews",
+      label: locale === 'ko' ? '시작하기' : 'Getting Started',
+      icon: Settings,
+      href: "/settings",
     },
     {
       label: t.sidebar.team,
@@ -59,9 +49,27 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
       href: "/team",
     },
     {
-      label: t.sidebar.settings,
-      icon: Settings,
-      href: "/settings",
+      label: locale === 'ko' ? '프로젝트' : 'Projects',
+      icon: Folder,
+      href: "/projects",
+    },
+    {
+      label: t.sidebar.dashboard,
+      icon: Home,
+      href: "/",
+      badge: locale === 'ko' ? '준비중' : 'Coming Soon',
+    },
+    {
+      label: t.sidebar.myPrompts,
+      icon: History,
+      href: "/my-prompts",
+      badge: locale === 'ko' ? '준비중' : 'Coming Soon',
+    },
+    {
+      label: t.sidebar.reviews,
+      icon: MessageSquare,
+      href: "/reviews",
+      badge: locale === 'ko' ? '준비중' : 'Coming Soon',
     },
   ]
 
@@ -113,7 +121,16 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
                   "h-4 w-4",
                   !isCollapsed && "mr-2"
                 )} />
-                {!isCollapsed && route.label}
+                {!isCollapsed && (
+                  <>
+                    <span className="flex-1 text-left">{route.label}</span>
+                    {route.badge && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {route.badge}
+                      </span>
+                    )}
+                  </>
+                )}
               </Button>
             </Link>
           ))}

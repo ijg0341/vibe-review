@@ -235,189 +235,107 @@ export default function TeamPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* 왼쪽: 팀 멤버 목록 */}
-            <div className="lg:col-span-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{locale === 'ko' ? '팀 멤버' : 'Team Members'}</CardTitle>
-                  <CardDescription>
-                    {locale === 'ko' 
-                      ? `${teamMembers.length}명의 멤버` 
-                      : `${teamMembers.length} members`
-                    }
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* 검색 바 */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder={locale === 'ko' ? '멤버 검색...' : 'Search members...'}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
+          {/* 검색 바 */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={locale === 'ko' ? '멤버 검색...' : 'Search members...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
 
-                  {/* 멤버 리스트 */}
-                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                    {filteredMembers.length === 0 ? (
-                      <div className="text-center py-8">
-                        <User className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">
-                          {locale === 'ko' ? '팀 멤버가 없습니다' : 'No team members found'}
-                        </p>
-                      </div>
-                    ) : (
-                      filteredMembers.map((member) => (
-                        <div
-                          key={member.id}
-                          onClick={() => handleSelectMember(member)}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
-                            selectedMember?.id === member.id ? 'bg-muted/50 border-primary' : ''
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <Avatar className="h-10 w-10">
-                              <AvatarImage src={member.avatar_url} />
-                              <AvatarFallback>
-                                {getUserInitials(member.email, member.display_name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">
-                                {member.display_name || member.email}
-                              </p>
-                              {member.display_name && (
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {member.email}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-3 mt-1">
-                                <span className="text-xs text-muted-foreground">
-                                  <Folder className="inline h-3 w-3 mr-1" />
-                                  {member.project_count} {locale === 'ko' ? '프로젝트' : 'projects'}
-                                </span>
-                                {member.last_upload && (
-                                  <span className="text-xs text-muted-foreground">
-                                    <Clock className="inline h-3 w-3 mr-1" />
-                                    {formatDate(member.last_upload)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* 오른쪽: 선택한 멤버의 프로젝트 */}
-            <div className="lg:col-span-2">
-              {selectedMember ? (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={selectedMember.avatar_url} />
-                          <AvatarFallback>
-                            {getUserInitials(selectedMember.email, selectedMember.display_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <CardTitle>
-                            {selectedMember.display_name || selectedMember.email}
-                            {locale === 'ko' ? '님의 세션' : "'s Sessions"}
-                          </CardTitle>
-                          <CardDescription>
-                            {memberSessions.length} {locale === 'ko' ? '개의 세션' : 'sessions'}
-                          </CardDescription>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {projectsLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      </div>
-                    ) : memberSessions.length === 0 ? (
-                      <div className="text-center py-12">
-                        <FolderOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">
-                          {locale === 'ko' ? '세션이 없습니다' : 'No sessions found'}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="grid gap-4">
-                        {memberSessions.map((session) => (
-                          <Card 
-                            key={session.id}
-                            className="hover:shadow-md transition-shadow cursor-pointer"
-                            onClick={() => handleViewSession(session.id)}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-start gap-3 flex-1">
-                                  <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                                  <div className="flex-1">
-                                    <h3 className="font-semibold">{session.session_name || session.file_name}</h3>
-                                    {session.project && (
-                                      <p className="text-sm text-muted-foreground mt-1">
-                                        <Folder className="inline h-3 w-3 mr-1" />
-                                        {session.project.name}
-                                      </p>
-                                    )}
-                                    <div className="flex items-center gap-4 mt-2">
-                                      <span className="text-xs text-muted-foreground">
-                                        <Calendar className="inline h-3 w-3 mr-1" />
-                                        {formatDate(session.uploaded_at)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleViewSession(session.id)
-                                  }}
-                                >
-                                  {locale === 'ko' ? '보기' : 'View'}
-                                  <ArrowRight className="ml-2 h-4 w-4" />
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardContent className="py-16">
-                    <div className="text-center">
-                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">
-                        {locale === 'ko' 
-                          ? '팀 멤버를 선택하여 세션을 확인하세요' 
-                          : 'Select a team member to view their sessions'
-                        }
+          {/* 팀 멤버 카드 그리드 (3개씩) */}
+          {filteredMembers.length === 0 ? (
+            <Card>
+              <CardContent className="py-16">
+                <div className="text-center">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">
+                    {locale === 'ko' ? '팀 멤버가 없습니다' : 'No team members found'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredMembers.map((member) => (
+                <Card 
+                  key={member.id}
+                  className="hover:shadow-lg transition-all cursor-pointer group"
+                  onClick={() => router.push(`/team/${member.id}`)}
+                >
+                  <CardContent className="p-6">
+                    {/* 프로필 섹션 */}
+                    <div className="flex flex-col items-center text-center mb-4">
+                      <Avatar className="h-20 w-20 mb-3">
+                        <AvatarImage src={member.avatar_url} />
+                        <AvatarFallback className="text-lg">
+                          {getUserInitials(member.email, member.display_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <h3 className="font-semibold text-lg">
+                        {member.display_name || member.email.split('@')[0]}
+                      </h3>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                        <Mail className="h-3 w-3" />
+                        {member.email}
                       </p>
                     </div>
+
+                    {/* 통계 섹션 */}
+                    <div className="space-y-3 border-t pt-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Folder className="h-4 w-4" />
+                          {locale === 'ko' ? '프로젝트' : 'Projects'}
+                        </span>
+                        <Badge variant="secondary">
+                          {member.project_count || 0}
+                        </Badge>
+                      </div>
+                      
+                      {member.last_upload && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            {locale === 'ko' ? '최근 업로드' : 'Last upload'}
+                          </span>
+                          <span className="text-sm text-right">
+                            {formatDate(member.last_upload)}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {locale === 'ko' ? '가입일' : 'Joined'}
+                        </span>
+                        <span className="text-sm text-right">
+                          {formatDate(member.created_at)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 액션 버튼 */}
+                    <Button 
+                      className="w-full mt-4 group-hover:bg-primary group-hover:text-primary-foreground"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/team/${member.id}`)
+                      }}
+                    >
+                      {locale === 'ko' ? '세션 보기' : 'View Sessions'}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
                   </CardContent>
                 </Card>
-              )}
+              ))}
             </div>
-          </div>
+          )}
         </div>
       </DashboardLayout>
     </ProtectedRoute>

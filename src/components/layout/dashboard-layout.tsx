@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils"
 interface DashboardLayoutProps {
   children: React.ReactNode
   onUploadClick?: () => void
+  fullWidth?: boolean
 }
 
-export function DashboardLayout({ children, onUploadClick }: DashboardLayoutProps) {
+export function DashboardLayout({ children, onUploadClick, fullWidth = false }: DashboardLayoutProps) {
   const [isCollapsed, setIsCollapsed] = React.useState(false)
 
   return (
@@ -23,9 +24,15 @@ export function DashboardLayout({ children, onUploadClick }: DashboardLayoutProp
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-auto bg-muted/10">
-          <div className="container mx-auto p-6">
-            {children}
-          </div>
+          {fullWidth ? (
+            <div className="h-full">
+              {children}
+            </div>
+          ) : (
+            <div className="container mx-auto p-6">
+              {children}
+            </div>
+          )}
         </main>
       </div>
     </div>

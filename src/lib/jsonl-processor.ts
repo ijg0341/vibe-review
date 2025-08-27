@@ -12,6 +12,7 @@ interface ProcessedLine {
 
 export class JSONLProcessor {
   private supabase: any
+  private readonly MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB - 스트리밍 처리 임계값
   
   constructor(supabaseClient?: any) {
     this.supabase = supabaseClient || createClientClient()
@@ -39,7 +40,13 @@ export class JSONLProcessor {
     let minTimestamp: Date | null = null
     let maxTimestamp: Date | null = null
     
+    // 성능 최적화: 배치 크기와 업데이트 빈도 설정
+    const BATCH_SIZE = 500  // 100에서 500으로 증가
+    const UPDATE_FREQUENCY = 2000  // 2000줄마다 진행 상황 업데이트
+    let lastUpdateLine = 0
+    
     console.log('Total lines in file:', lines.length)
+    console.log(`Optimized batch size: ${BATCH_SIZE}, Update frequency: ${UPDATE_FREQUENCY}`)
     
     try {
       // 세션 처리 상태를 'processing'으로 업데이트
@@ -66,7 +73,7 @@ export class JSONLProcessor {
           continue
         }
         
-        let processedLine: ProcessedLine = {
+        const processedLine: ProcessedLine = {
           line_number: lineNumber,
           content: null,
           raw_text: line
@@ -115,17 +122,21 @@ export class JSONLProcessor {
         
         batch.push(processedLine)
         
-        // 100개씩 배치 삽입
-        if (batch.length >= 100) {
+        // 배치 크기에 도달하면 삽입
+        if (batch.length >= BATCH_SIZE) {
           console.log(`Inserting batch of ${batch.length} lines...`)
           await this.insertBatch(batch, sessionId, uploadId)
           batch.length = 0
           
-          // 진행 상황 업데이트
-          await this.supabase
-            .from('project_sessions')
-            .update({ processed_lines: lineNumber })
-            .eq('id', sessionId)
+          // UPDATE_FREQUENCY 간격으로 진행 상황 업데이트
+          if (lineNumber - lastUpdateLine >= UPDATE_FREQUENCY) {
+            await this.supabase
+              .from('project_sessions')
+              .update({ processed_lines: lineNumber })
+              .eq('id', sessionId)
+            lastUpdateLine = lineNumber
+            console.log(`Progress update: ${lineNumber}/${lines.length} lines processed`)
+          }
         }
       }
       
@@ -173,6 +184,126 @@ export class JSONLProcessor {
       console.error('Error processing JSONL file:', error)
       
       // 에러 상태 업데이트
+      await this.supabase
+        .from('project_sessions')
+        .update({ 
+          processing_status: 'error',
+          processing_error: error instanceof Error ? error.message : 'Unknown error'
+        })
+        .eq('id', sessionId)
+      
+      return {
+        success: false,
+        processedLines: processedCount,
+        errors: errorCount,
+        newLines: newLines,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  }
+  
+  /**
+   * 스트리밍 방식으로 큰 파일 처리
+   */
+  async processLargeJSONLFile(
+    fileContent: string,
+    sessionId: string,
+    uploadId: string,
+    existingLineCount: number = 0
+  ): Promise<{ success: boolean; processedLines: number; errors: number; newLines: number; error?: string }> {
+    console.log('Processing large file with streaming approach...')
+    
+    // 청크 단위로 처리
+    const CHUNK_SIZE = 1000 // 1000줄씩 처리
+    const lines = fileContent.split('\n').filter(line => line.trim())
+    let processedCount = 0
+    let errorCount = 0
+    let newLines = 0
+    
+    try {
+      await this.supabase
+        .from('project_sessions')
+        .update({ 
+          processing_status: 'processing',
+          processed_lines: existingLineCount 
+        })
+        .eq('id', sessionId)
+      
+      // 청크별로 처리
+      for (let chunkStart = existingLineCount; chunkStart < lines.length; chunkStart += CHUNK_SIZE) {
+        const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, lines.length)
+        const chunkLines = lines.slice(chunkStart, chunkEnd)
+        const batch: ProcessedLine[] = []
+        
+        for (let i = 0; i < chunkLines.length; i++) {
+          const line = chunkLines[i].trim()
+          if (!line) continue
+          
+          const lineNumber = chunkStart + i + 1
+          
+          let processedLine: ProcessedLine = {
+            line_number: lineNumber,
+            content: null,
+            raw_text: line
+          }
+          
+          try {
+            const json = JSON.parse(line)
+            processedLine.content = json
+            
+            if (json.type) processedLine.message_type = json.type
+            if (json.role) processedLine.message_type = json.role
+            if (json.timestamp) processedLine.message_timestamp = json.timestamp
+            if (json.metadata) processedLine.metadata = json.metadata
+            
+            processedCount++
+            newLines++
+          } catch (e) {
+            errorCount++
+          }
+          
+          batch.push(processedLine)
+        }
+        
+        // 청크 단위로 배치 삽입
+        if (batch.length > 0) {
+          await this.insertBatch(batch, sessionId, uploadId)
+          console.log(`Processed chunk: ${chunkStart}-${chunkEnd} (${batch.length} lines)`)
+        }
+        
+        // 청크마다 진행 상황 업데이트
+        if (chunkEnd % 5000 === 0 || chunkEnd === lines.length) {
+          await this.supabase
+            .from('project_sessions')
+            .update({ processed_lines: chunkEnd })
+            .eq('id', sessionId)
+        }
+        
+        // 메모리 압박 방지를 위한 가비지 컬렉션 힌트
+        if (global.gc && chunkEnd % 10000 === 0) {
+          global.gc()
+        }
+      }
+      
+      // 최종 상태 업데이트
+      await this.supabase
+        .from('project_sessions')
+        .update({ 
+          processing_status: 'completed',
+          processed_lines: lines.length,
+          session_count: lines.length
+        })
+        .eq('id', sessionId)
+      
+      return {
+        success: true,
+        processedLines: processedCount,
+        errors: errorCount,
+        newLines: newLines
+      }
+    } catch (error) {
+      console.error('Error in streaming processing:', error)
+      
       await this.supabase
         .from('project_sessions')
         .update({ 

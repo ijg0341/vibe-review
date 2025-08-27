@@ -151,7 +151,8 @@ async function getUserSettings(config) {
       headers: {
         'Authorization': \`Bearer \${config.apiKey}\`,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 3000 // 3초 타임아웃
     };
     
     const httpModule = url.protocol === 'https:' ? https : http;
@@ -170,6 +171,13 @@ async function getUserSettings(config) {
           resolve({ project_path: null }); // 설정이 없으면 null
         }
       });
+    });
+    
+    // 타임아웃 처리
+    req.setTimeout(3000, () => {
+      console.log('User settings request timed out, using default');
+      req.abort();
+      resolve({ project_path: null });
     });
     
     req.on('error', () => resolve({ project_path: null }));

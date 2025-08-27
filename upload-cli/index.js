@@ -96,6 +96,28 @@ async function scanClaudeProjects(projectsPath) {
   return projects;
 }
 
+// 병렬 업로드를 위한 헬퍼 함수
+async function uploadWithConcurrencyLimit(tasks, limit = 3) {
+  const results = [];
+  const executing = [];
+  
+  for (const task of tasks) {
+    const promise = task().then(result => {
+      executing.splice(executing.indexOf(promise), 1);
+      return result;
+    });
+    
+    results.push(promise);
+    executing.push(promise);
+    
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  
+  return Promise.allSettled(results);
+}
+
 // 업로드 명령어
 async function uploadCommand(targetPath, options) {
   const config = await loadConfig();
@@ -138,39 +160,56 @@ async function uploadCommand(targetPath, options) {
     // 업로드 진행
     let successCount = 0;
     let errorCount = 0;
+    const uploadTasks = [];
+    
+    // 병렬 업로드 개수 설정 (기본값: 3, 최대: 5)
+    const concurrencyLimit = Math.min(options.parallel || 3, 5);
+    console.log(chalk.gray(`\n⚡ Parallel upload enabled (max ${concurrencyLimit} concurrent uploads)`));
     
     for (const [projectName, files] of Object.entries(projects)) {
       console.log(chalk.blue(`\n📁 Project: ${projectName}`));
       
-      for (const file of files) {
+      // 프로젝트별 업로드 태스크 생성
+      const projectTasks = files.map(file => {
         const fileName = path.basename(file);
-        const uploadSpinner = ora(`Uploading ${fileName}...`).start();
         
-        try {
-          const result = await uploadFile(file, projectName, config, options.projectId);
+        return async () => {
+          const uploadSpinner = ora(`Uploading ${fileName}...`).start();
           
-          if (result.newLines > 0) {
-            uploadSpinner.succeed(
-              `${fileName} - ${result.newLines} new lines added`
+          try {
+            const startTime = Date.now();
+            const result = await uploadFile(file, projectName, config, options.projectId);
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            
+            if (result.newLines > 0) {
+              uploadSpinner.succeed(
+                `${fileName} - ${result.newLines} new lines added (${elapsed}s)`
+              );
+            } else {
+              uploadSpinner.succeed(
+                `${fileName} - Already up to date (${elapsed}s)`
+              );
+            }
+            successCount++;
+            return { success: true, fileName };
+          } catch (error) {
+            uploadSpinner.fail(
+              `${fileName} - ${error.response?.data?.error || error.message}`
             );
-          } else {
-            uploadSpinner.succeed(
-              `${fileName} - Already up to date`
-            );
+            errorCount++;
+            
+            if (options.stopOnError) {
+              console.error(chalk.red('\nStopping due to error (--stop-on-error flag)'));
+              process.exit(1);
+            }
+            
+            return { success: false, fileName, error };
           }
-          successCount++;
-        } catch (error) {
-          uploadSpinner.fail(
-            `${fileName} - ${error.response?.data?.error || error.message}`
-          );
-          errorCount++;
-          
-          if (options.stopOnError) {
-            console.error(chalk.red('\nStopping due to error (--stop-on-error flag)'));
-            process.exit(1);
-          }
-        }
-      }
+        };
+      });
+      
+      // 프로젝트별로 병렬 업로드 실행
+      const results = await uploadWithConcurrencyLimit(projectTasks, concurrencyLimit);
     }
     
     // 결과 요약
@@ -269,6 +308,8 @@ program
   .description('Upload JSONL files from a directory or single file')
   .option('-p, --project <name>', 'Project name (for single file upload)')
   .option('--stop-on-error', 'Stop upload if any file fails')
+  .option('--parallel <number>', 'Number of parallel uploads (max 5, default 3)', parseInt)
+  .option('--project-id <id>', 'Project ID for upload')
   .action(uploadCommand);
 
 // status 명령어
@@ -282,6 +323,8 @@ program
   .argument('[path]', 'Path to Claude projects directory or JSONL file')
   .option('-p, --project <name>', 'Project name (for single file upload)')
   .option('--stop-on-error', 'Stop upload if any file fails')
+  .option('--parallel <number>', 'Number of parallel uploads (max 5, default 3)', parseInt)
+  .option('--project-id <id>', 'Project ID for upload')
   .action(async (targetPath, options) => {
     if (!targetPath) {
       // 기본 Claude 프로젝트 경로 사용

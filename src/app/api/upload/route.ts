@@ -102,16 +102,58 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // projectId가 제공되지 않으면 에러
+    // projectId가 제공되지 않으면 프로젝트 이름 기반으로 프로젝트 생성 또는 조회
     if (!projectId) {
-      console.log('No projectId provided, upload rejected')
-      return NextResponse.json(
-        { 
-          error: 'Project ID is required',
-          details: 'Please use --project-id option when uploading. Example: vibe-upload [path] --project-id=YOUR_PROJECT_ID'
-        },
-        { status: 400 }
-      )
+      console.log('No projectId provided, creating/finding project based on folder name')
+      
+      // 프로젝트 이름 정리 (경로 부분 제거, 빈 문자열이면 기본값 사용)
+      const cleanProjectName = projectName || 'default-project'
+      console.log('Using project name:', cleanProjectName)
+      
+      // 해당 이름의 프로젝트 찾기
+      const { data: existingProject } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('owner_id', verification.userId)
+        .eq('folder_path', cleanProjectName)  // folder_path로 프로젝트 구분
+        .maybeSingle()
+      
+      if (existingProject) {
+        projectId = existingProject.id
+        console.log('Using existing project:', cleanProjectName, projectId)
+      } else {
+        // 프로젝트 생성
+        const { data: newProject, error: projectError } = await supabase
+          .from('projects')
+          .insert({
+            owner_id: verification.userId,
+            name: cleanProjectName || 'My Sessions',  // 표시 이름
+            description: `Claude sessions for ${cleanProjectName}`,
+            folder_path: cleanProjectName  // 실제 프로젝트 식별자
+          })
+          .select('id')
+          .single()
+        
+        if (projectError || !newProject) {
+          console.error('Failed to create project:', projectError)
+          return NextResponse.json(
+            { error: 'Failed to create project', details: projectError?.message },
+            { status: 500 }
+          )
+        }
+        
+        projectId = newProject.id
+        console.log('Created new project:', cleanProjectName, projectId)
+        
+        // 프로젝트 멤버로 추가
+        await supabase
+          .from('project_members')
+          .insert({
+            project_id: projectId,
+            user_id: verification.userId,
+            role: 'owner'
+          })
+      }
     }
     
     // project_sessions 테이블에서 세션 찾기 또는 생성
@@ -182,16 +224,34 @@ export async function POST(request: NextRequest) {
     
     console.log('Existing line count for session:', existingLineCount || 0)
     
-    // JSONL 처리
+    // JSONL 처리 - 파일 크기에 따라 다른 처리 방식 선택
     console.log('Creating JSONLProcessor...')
     const jsonlProcessor = new JSONLProcessor(supabase)
-    console.log('Starting JSONL processing...', { sessionId, existingLineCount })
-    const result = await jsonlProcessor.processJSONLFile(
-      content,
-      sessionId,
-      sessionId,
-      existingLineCount || 0
-    )
+    const fileSize = Buffer.byteLength(content, 'utf8')
+    const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+    
+    console.log(`File size: ${(fileSize / 1024 / 1024).toFixed(2)}MB`)
+    
+    let result
+    if (fileSize > MAX_FILE_SIZE) {
+      // 큰 파일은 스트리밍 방식으로 처리
+      console.log('Using streaming processing for large file...')
+      result = await jsonlProcessor.processLargeJSONLFile(
+        content,
+        sessionId,
+        sessionId,
+        existingLineCount || 0
+      )
+    } else {
+      // 작은 파일은 일반 처리
+      console.log('Starting standard JSONL processing...', { sessionId, existingLineCount })
+      result = await jsonlProcessor.processJSONLFile(
+        content,
+        sessionId,
+        sessionId,
+        existingLineCount || 0
+      )
+    }
     console.log('JSONL processing result:', result)
     
     // 프로젝트 세션 상태 업데이트

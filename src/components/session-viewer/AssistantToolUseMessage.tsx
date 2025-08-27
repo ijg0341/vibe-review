@@ -478,7 +478,7 @@ export const AssistantToolUseMessage: React.FC<AssistantToolUseMessageProps> = (
             {/* Detailed Input (collapsible) */}
             {showDetails && (
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <pre className="bg-white/50 dark:bg-black/20 rounded p-2 text-xs overflow-x-auto">
+                <pre className="bg-white/50 dark:bg-black/20 rounded p-2 text-xs overflow-x-hidden whitespace-pre-wrap break-words">
                   {JSON.stringify(toolInput, null, 2)}
                 </pre>
               </div>
