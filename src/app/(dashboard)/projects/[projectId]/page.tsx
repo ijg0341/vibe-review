@@ -683,7 +683,7 @@ export default function ProjectDetailPage() {
                                       <Star
                                         key={i}
                                         className={`h-3 w-3 ${
-                                          i < review.rating
+                                          i < (review.rating || 0)
                                             ? 'fill-yellow-400 text-yellow-400'
                                             : 'text-gray-300'
                                         }`}
@@ -1044,7 +1044,7 @@ export default function ProjectDetailPage() {
                                 <Star
                                   key={i}
                                   className={`h-4 w-4 ${
-                                    i < review.rating
+                                    i < (review.rating || 0)
                                       ? 'fill-yellow-400 text-yellow-400'
                                       : 'text-gray-300'
                                   }`}

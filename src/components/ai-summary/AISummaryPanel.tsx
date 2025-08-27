@@ -55,7 +55,7 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
         // 해당 세션의 해당 날짜 사용자 메시지만 필터링
         const userTexts = sessionLines
           .filter(line => {
-            const messageDate = line.message_timestamp
+            const messageDate = (line as any).message_timestamp
             return line.upload_id === session.id && 
                    messageDate && 
                    messageDate.startsWith(date) &&
@@ -204,7 +204,7 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
             <div className="flex flex-col items-center justify-center h-40">
               <AlertCircle className="h-8 w-8 mb-4 text-destructive" />
               <p className="text-sm text-destructive text-center mb-4">{error}</p>
-              <Button onClick={generateSummary} size="sm">
+              <Button onClick={() => generateSummary()} size="sm">
                 {locale === 'ko' ? '다시 시도' : 'Try Again'}
               </Button>
             </div>

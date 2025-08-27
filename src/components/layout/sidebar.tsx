@@ -34,7 +34,7 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
 
   const routes: Array<{
     label: string
-    icon: any
+    icon: React.ComponentType<{ className?: string }>
     href: string
     badge?: string
   }> = [

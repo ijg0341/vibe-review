@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
 ${projectTexts.map(project => {
   // 프로젝트별 메시지 수와 전체 텍스트 길이 계산
-  const messages = project.userText.split('\n\n').filter(text => text.trim().length > 0)
+  const messages = project.userText.split('\n\n').filter((text: string) => text.trim().length > 0)
   const totalLength = project.userText.length
   const messageCount = messages.length
   

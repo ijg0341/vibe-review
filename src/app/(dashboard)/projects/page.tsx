@@ -132,8 +132,8 @@ export default function ProjectsPage() {
           if (project.last_uploader_id) {
             const uploader = uploaderProfiles?.find(p => p.id === project.last_uploader_id)
             if (uploader) {
-              project.last_uploader_email = uploader.email
-              project.last_uploader_name = uploader.display_name
+              (project as any).last_uploader_email = uploader.email;
+              (project as any).last_uploader_name = uploader.display_name
             }
           }
         })
@@ -347,7 +347,7 @@ export default function ProjectsPage() {
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {formatDate(project.last_activity)}
+                              {formatDate(project.last_activity || null)}
                             </span>
                           </div>
 

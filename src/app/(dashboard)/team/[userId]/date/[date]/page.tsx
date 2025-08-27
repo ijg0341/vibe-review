@@ -447,7 +447,7 @@ export default function TeamDateDetailPage() {
                                 avatar_url: member?.avatar_url
                               }
                             }))}
-                            selectedSessionId={selectedSessionId}
+                            selectedSessionId={selectedSessionId || undefined}
                             onSessionSelect={(session) => selectSession(session.id)}
                             locale={locale}
                           />
@@ -497,9 +497,9 @@ export default function TeamDateDetailPage() {
                   <SessionViewer
                     lines={sessionLines}
                     loading={linesLoading}
-                    sessionTitle={null} // 제목 중복 방지
+                    sessionTitle={undefined} // 제목 중복 방지
                     sessionInfo={{
-                      user: null, // 이미 사이드바에 표시됨
+                      user: undefined, // 이미 사이드바에 표시됨
                       uploadTime: selectedSession.uploaded_at,
                       processedLines: selectedSession.processed_lines
                     }}
@@ -551,7 +551,7 @@ export default function TeamDateDetailPage() {
               date={dateStr}
               locale={locale}
               sessions={sessions}
-              sessionLines={allSessionLines}
+              sessionLines={allSessionLines as any}
             />
           </div>
         </div>

@@ -549,12 +549,12 @@ export default function ProjectDetailPage() {
                       </p>
                     </div>
                   ) : (
-                    sessions.map((session) => (
+                    sessionFiles.map((session) => (
                       <div
                         key={session.id}
-                        onClick={() => setSelectedSession(session)}
+                        onClick={() => setSelectedFile(session)}
                         className={`p-3 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
-                          selectedSession?.id === session.id ? 'bg-muted/50 border-primary' : ''
+                          selectedFile?.id === session.id ? 'bg-muted/50 border-primary' : ''
                         }`}
                       >
                         <div className="flex items-start justify-between">
@@ -595,7 +595,7 @@ export default function ProjectDetailPage() {
                                   </span>
                                 )}
                                 <span className="text-xs text-muted-foreground truncate">
-                                  {session.session_name || session.file_name}
+                                  {session.file_name}
                                 </span>
                                 {session.file_size && (
                                   <span className="text-xs text-muted-foreground">
@@ -787,8 +787,8 @@ export default function ProjectDetailPage() {
                         {/* 하단 정보 바 */}
                         <div className="flex items-center justify-between pt-3 mt-3 border-t text-sm text-muted-foreground">
                           <div>
-                            {selectedSession && (
-                              <span className="font-medium">{selectedSession.session_name || selectedSession.file_name}</span>
+                            {selectedFile && (
+                              <span className="font-medium">{selectedFile.file_name}</span>
                             )}
                             <span className="mx-2">•</span>
                             {locale === 'ko' 

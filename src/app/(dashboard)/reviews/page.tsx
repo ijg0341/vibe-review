@@ -250,7 +250,7 @@ export default function ReviewsPage() {
       case 'in_progress':
         return <Badge variant="default"><MessageSquare className="h-3 w-3 mr-1" />{locale === 'ko' ? '진행중' : 'In Progress'}</Badge>
       case 'completed':
-        return <Badge variant="success"><CheckCircle className="h-3 w-3 mr-1" />{locale === 'ko' ? '완료' : 'Completed'}</Badge>
+        return <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />{locale === 'ko' ? '완료' : 'Completed'}</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -435,7 +435,7 @@ export default function ReviewsPage() {
                                       <Star
                                         key={i}
                                         className={`h-3 w-3 ${
-                                          i < review.rating
+                                          i < (review.rating || 0)
                                             ? 'fill-yellow-400 text-yellow-400'
                                             : 'text-gray-300'
                                         }`}

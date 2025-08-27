@@ -345,7 +345,7 @@ export default function ReviewDetailPage() {
     }
 
     return sessionLines.filter(line => {
-      const data = line.content || JSON.parse(line.raw_text || '{}')
+      const data = (line as any).content || JSON.parse((line as any).raw_text || '{}')
       let type = 'unknown'
       
       if (data.type === 'user') {
@@ -381,7 +381,7 @@ export default function ReviewDetailPage() {
       case 'in_progress':
         return <Badge variant="default"><MessageSquare className="h-3 w-3 mr-1" />{locale === 'ko' ? '진행중' : 'In Progress'}</Badge>
       case 'completed':
-        return <Badge variant="success"><CheckCircle className="h-3 w-3 mr-1" />{locale === 'ko' ? '완료' : 'Completed'}</Badge>
+        return <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />{locale === 'ko' ? '완료' : 'Completed'}</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -636,7 +636,7 @@ export default function ReviewDetailPage() {
                           <CardContent className="p-4">
                             <ScrollArea className="h-[500px] w-full">
                               <SessionViewerV2 
-                                lines={filteredSessionLines}
+                                lines={filteredSessionLines as any}
                                 viewMode="structured"
                                 locale={locale}
                               />
@@ -772,7 +772,7 @@ export default function ReviewDetailPage() {
                                     <Star
                                       key={i}
                                       className={`h-3 w-3 ${
-                                        i < review.rating
+                                        i < (review.rating || 0)
                                           ? 'fill-yellow-400 text-yellow-400'
                                           : 'text-gray-300'
                                       }`}
