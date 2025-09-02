@@ -3,309 +3,181 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useLocaleStore } from '@/lib/locale-store'
-import { useTranslation } from '@/lib/translations'
+import { useSettings } from '@/hooks/use-api'
+import { apiClient } from '@/lib/api-client'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { ProtectedRoute } from '@/components/auth/protected-route'
-import { createClient } from '@/lib/supabase/client'
-import { ApiKeyManager } from '@/lib/api-key-manager'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { 
-  Key, 
-  Copy, 
-  Download,
-  Terminal,
-  Code,
-  FileText,
-  CheckCircle2,
-  AlertCircle,
-  Settings as SettingsIcon,
-  Folder,
-  Globe,
-  Eye,
-  EyeOff,
-  Clock,
-  Upload
-} from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Settings as SettingsIcon, Folder, Globe, Save, Key, AlertCircle, Plus, Copy, Eye, EyeOff, Trash2 } from 'lucide-react'
 
-interface UserSettings {
-  project_path?: string
+interface ApiKey {
+  id: string
+  name: string
+  key_prefix?: string
+  full_key?: string
+  created_at: string
+  last_used?: string
+  is_active: boolean
 }
 
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState<string>('')
-  const [apiKeyPrefix, setApiKeyPrefix] = useState<string>('')
-  const [showFullKey, setShowFullKey] = useState(false)
   const [projectPath, setProjectPath] = useState('')
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const [apiKeysLoading, setApiKeysLoading] = useState(false)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [creatingKey, setCreatingKey] = useState(false)
+  const [showFullKey, setShowFullKey] = useState<Record<string, boolean>>({})
   
   const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
-  const t = useTranslation(locale)
-  const supabase = createClient()
   const { toast } = useToast()
-  const apiKeyManager = new ApiKeyManager()
+  const { settings, loading, fetchSettings, updateSettings } = useSettings()
 
-  const serverUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  // 설정 로드
+  useEffect(() => {
+    if (user?.id) {
+      fetchSettings()
+      fetchApiKeys()
+    }
+  }, [user?.id, fetchSettings])
 
-  // API 키 조회
-  const fetchApiKey = async () => {
-    if (!user?.id) return
+  // 설정 데이터가 로드되면 폼에 반영
+  useEffect(() => {
+    if (settings) {
+      setProjectPath(settings.default_project_path || '')
+    }
+  }, [settings])
 
+  // API 키 목록 조회
+  const fetchApiKeys = async () => {
+    setApiKeysLoading(true)
     try {
-      const result = await apiKeyManager.getActiveApiKey(user.id)
-      
-      if (result.error) {
-        console.log('No existing API key found')
-        return
-      }
-      
-      if (result.keyPrefix) {
-        setApiKeyPrefix(result.keyPrefix)
+      const response = await apiClient.getApiKeys()
+      if (response.success && response.data) {
+        setApiKeys(response.data.keys || response.data || [])
       }
     } catch (error) {
-      console.error('Error fetching API key:', error)
+      console.error('Failed to fetch API keys:', error)
+    } finally {
+      setApiKeysLoading(false)
     }
   }
 
   // 새 API 키 생성
-  const generateNewApiKey = async () => {
-    if (!user?.id) return
+  const handleCreateApiKey = async () => {
+    if (!newKeyName.trim()) {
+      toast({
+        variant: 'destructive',
+        title: locale === 'ko' ? '이름 필수' : 'Name required',
+        description: locale === 'ko' ? 'API 키 이름을 입력해주세요' : 'Please enter API key name',
+      })
+      return
+    }
 
+    setCreatingKey(true)
     try {
-      // 기존 키 삭제
-      await supabase
-        .from('api_keys')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('name', 'Default CLI Key')
-      
-      // 새 키 생성
-      const result = await apiKeyManager.getOrCreateDefaultApiKey(user.id)
-      
-      if (result.error) {
-        console.error('Error creating API key:', result.error)
-        toast({
-          variant: 'destructive',
-          title: locale === 'ko' ? 'API 키 생성 실패' : 'Failed to create API key',
-          description: result.error
-        })
-        return
-      }
-      
-      if (result.key) {
-        setApiKey(result.key)
-        setApiKeyPrefix(result.keyPrefix || '')
-        
+      const response = await apiClient.createApiKey({ name: newKeyName })
+      if (response.success) {
         toast({
           title: locale === 'ko' ? 'API 키 생성됨' : 'API key created',
-          description: locale === 'ko' 
-            ? '새 API 키가 생성되었습니다. 이 키는 다시 표시되지 않으니 안전한 곳에 저장하세요.' 
-            : 'New API key created. This key will not be shown again, please save it securely.'
+          description: locale === 'ko' ? '새 API 키가 생성되었습니다' : 'New API key has been created',
+        })
+        setNewKeyName('')
+        fetchApiKeys()
+      } else {
+        toast({
+          variant: 'destructive',
+          title: locale === 'ko' ? '생성 실패' : 'Creation failed',
+          description: response.error || 'Failed to create API key',
         })
       }
     } catch (error) {
-      console.error('Error generating API key:', error)
+      toast({
+        variant: 'destructive',
+        title: locale === 'ko' ? '오류 발생' : 'Error occurred',
+        description: locale === 'ko' ? 'API 키 생성 중 오류가 발생했습니다' : 'Error creating API key',
+      })
+    } finally {
+      setCreatingKey(false)
     }
   }
 
-  // 사용자 설정 조회
-  const fetchUserSettings = async () => {
-    if (!user?.id) return
-
+  // API 키 삭제
+  const handleDeleteApiKey = async (keyId: string) => {
     try {
-      setLoading(true)
-      
-      // user_settings 테이블에서 설정 조회 - RPC 대신 직접 쿼리
-      const { data: settings, error } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .single()
-      
-      if (error) {
-        console.error('Error fetching settings:', error)
-        // 테이블이 없는 경우 프로젝트에서 폴백
-        const { data: projectMembers } = await supabase
-          .from('project_members')
-          .select('project_id')
-          .eq('user_id', user.id)
-          .limit(1)
-
-        if (projectMembers && projectMembers.length > 0) {
-          const { data: project } = await supabase
-            .from('projects')
-            .select('folder_path')
-            .eq('id', projectMembers[0].project_id)
-            .single()
-          
-          if (project?.folder_path) {
-            setProjectPath(project.folder_path)
-          }
-        }
-      } else if (settings) {
-        setProjectPath(settings.project_path || '')
+      const response = await apiClient.deleteApiKey(keyId)
+      if (response.success) {
+        toast({
+          title: locale === 'ko' ? 'API 키 삭제됨' : 'API key deleted',
+          description: locale === 'ko' ? 'API 키가 삭제되었습니다' : 'API key has been deleted',
+        })
+        fetchApiKeys()
+      } else {
+        toast({
+          variant: 'destructive',
+          title: locale === 'ko' ? '삭제 실패' : 'Deletion failed',
+          description: response.error || 'Failed to delete API key',
+        })
       }
-      
     } catch (error) {
-      console.error('Error fetching settings:', error)
-    } finally {
-      setLoading(false)
+      toast({
+        variant: 'destructive',
+        title: locale === 'ko' ? '오류 발생' : 'Error occurred',
+        description: locale === 'ko' ? 'API 키 삭제 중 오류가 발생했습니다' : 'Error deleting API key',
+      })
     }
+  }
+
+  // API 키 복사
+  const copyApiKey = (key: string) => {
+    navigator.clipboard.writeText(key)
+    toast({
+      title: locale === 'ko' ? '복사됨' : 'Copied',
+      description: locale === 'ko' ? 'API 키가 클립보드에 복사되었습니다' : 'API key copied to clipboard',
+    })
   }
 
   // 설정 저장
-  const saveSettings = async () => {
+  const handleSaveSettings = async () => {
     if (!user?.id) return
 
     try {
       setSaving(true)
       
-      // user_settings 테이블에 저장
-      const { error } = await supabase
-        .from('user_settings')
-        .upsert({
-          user_id: user.id,
-          project_path: projectPath,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id'
-        })
-      
-      if (error) {
-        console.error('Database save error:', error)
-        // 폴백: 로컬 스토리지에 저장
-        localStorage.setItem('vibe_project_path', projectPath)
-      } else {
-        // 로컬 스토리지에도 저장 (캐시용)
-        localStorage.setItem('vibe_project_path', projectPath)
-      }
-      
-      toast({
-        title: locale === 'ko' ? '설정이 저장되었습니다' : 'Settings saved',
+      const result = await updateSettings({
+        default_project_path: projectPath,
+        locale: locale
       })
+
+      if (result.success) {
+        toast({
+          title: locale === 'ko' ? '설정 저장됨' : 'Settings saved',
+          description: locale === 'ko' ? '설정이 성공적으로 저장되었습니다' : 'Your settings have been saved successfully',
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: locale === 'ko' ? '저장 실패' : 'Save failed',
+          description: result.error || 'Failed to save settings',
+        })
+      }
     } catch (error) {
-      console.error('Error saving settings:', error)
       toast({
         variant: 'destructive',
-        title: locale === 'ko' ? '설정 저장 실패' : 'Failed to save settings',
+        title: locale === 'ko' ? '오류 발생' : 'Error occurred',
+        description: locale === 'ko' ? '설정 저장 중 문제가 발생했습니다' : 'Failed to save settings',
       })
     } finally {
       setSaving(false)
     }
   }
-
-  // 클립보드 복사
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({
-      title: locale === 'ko' ? '클립보드에 복사됨' : 'Copied to clipboard',
-    })
-  }
-
-  // 스크립트 다운로드
-  const downloadScript = (scriptName: string) => {
-    let content = ''
-    
-    if (scriptName === 'auto-upload.sh') {
-      // 실제 API 키 사용 (전체 키가 있으면 사용, 없으면 placeholder)
-      const apiKeyValue = apiKey || (apiKeyPrefix ? `${apiKeyPrefix}...` : 'YOUR_API_KEY')
-      
-      content = `#!/bin/bash
-# Vibe Upload Script
-# Auto-generated for ${user?.email}
-# Generated at: ${new Date().toISOString()}
-
-# Configuration
-API_KEY="${apiKeyValue}"  # ${apiKey ? 'This is your actual API key' : 'Replace with your actual API key'}
-SERVER_URL="${serverUrl}"
-PROJECT_PATH="${projectPath || '~/projects'}"
-
-# Colors for output
-RED='\\033[0;31m'
-GREEN='\\033[0;32m'
-YELLOW='\\033[1;33m'
-BLUE='\\033[0;34m'
-NC='\\033[0m' # No Color
-
-echo -e "\${BLUE}╔════════════════════════════════╗\${NC}"
-echo -e "\${BLUE}║   Vibe Upload Auto Script      ║\${NC}"
-echo -e "\${BLUE}╚════════════════════════════════╝\${NC}"
-echo ""
-
-# Check if vibe-upload CLI is installed
-if ! command -v vibe-upload &> /dev/null; then
-  echo -e "\${YELLOW}Installing vibe-upload CLI...\${NC}"
-  npm install -g vibe-upload-cli
-fi
-
-# Configure CLI
-echo -e "\${BLUE}Configuring CLI...\${NC}"
-vibe-upload config --api-key "\$API_KEY" --server-url "\$SERVER_URL"
-
-# Upload from project path
-echo -e "\${BLUE}Uploading from \$PROJECT_PATH...\${NC}"
-vibe-upload "\$PROJECT_PATH"
-
-echo -e "\${GREEN}✨ Upload complete!\${NC}"
-`
-    } else if (scriptName === 'viberc') {
-      const apiKeyValue = apiKey || (apiKeyPrefix ? `${apiKeyPrefix}...` : 'YOUR_API_KEY')
-      
-      content = JSON.stringify({
-        apiKey: apiKeyValue,
-        serverUrl: serverUrl,
-        projectPath: projectPath || '~/projects'
-      }, null, 2)
-    }
-
-    // 다운로드 트리거
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = scriptName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    
-    toast({
-      title: locale === 'ko' ? '다운로드 시작됨' : 'Download started',
-      description: scriptName,
-    })
-  }
-
-  // 설치 명령어 생성
-  const getInstallCommand = () => {
-    const apiKeyValue = apiKey || (apiKeyPrefix ? `${apiKeyPrefix}...` : 'YOUR_API_KEY')
-    return `curl -o vibe-upload.js "${serverUrl}/api/download/cli?type=script" && \\
-chmod +x vibe-upload.js && \\
-sudo mv vibe-upload.js /usr/local/bin/vibe-upload && \\
-vibe-upload config --api-key ${apiKeyValue} --server-url ${serverUrl}`
-  }
-
-  // 업로드 명령어 생성
-  const getUploadCommand = () => {
-    // Claude 세션이 저장되는 기본 경로 사용
-    return `vibe-upload ~/.claude/projects`
-  }
-
-  useEffect(() => {
-    fetchApiKey()
-    fetchUserSettings()
-  }, [user?.id])
-
-  useEffect(() => {
-    // 로컬 스토리지에서 설정 불러오기
-    const savedProjectPath = localStorage.getItem('vibe_project_path')
-    
-    if (savedProjectPath) setProjectPath(savedProjectPath)
-  }, [])
 
   return (
     <ProtectedRoute>
@@ -315,427 +187,295 @@ vibe-upload config --api-key ${apiKeyValue} --server-url ${serverUrl}`
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <SettingsIcon className="h-8 w-8" />
-              {locale === 'ko' ? 'CLI 설정' : 'CLI Settings'}
+              {locale === 'ko' ? '설정' : 'Settings'}
             </h1>
             <p className="text-muted-foreground">
               {locale === 'ko' 
-                ? 'CLI 도구 및 자동 업로드 설정' 
-                : 'Configure CLI tools and automatic uploads'
+                ? '계정 설정과 기본 설정을 관리하세요' 
+                : 'Manage your account and preferences'
               }
             </p>
           </div>
 
-          {/* 1. API 설정 섹션 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                {locale === 'ko' ? 'API 설정' : 'API Configuration'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">
-                  {locale === 'ko' ? 'API 키' : 'API Key'}
-                </label>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="flex-1 p-2 bg-muted rounded font-mono text-sm break-all">
-                    {apiKey || (apiKeyPrefix ? `${apiKeyPrefix}...` : 'No API key found')}
-                  </code>
-                  {(apiKey || apiKeyPrefix) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToClipboard(apiKey || apiKeyPrefix || '')}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                
-                {(!apiKey && !apiKeyPrefix) || apiKeyPrefix ? (
-                  <Button
-                    className="mt-2"
-                    variant="outline"
-                    size="sm"
-                    onClick={generateNewApiKey}
-                  >
-                    <Key className="mr-2 h-3 w-3" />
-                    {locale === 'ko' ? '새 API 키 생성' : 'Generate New API Key'}
-                  </Button>
-                ) : null}
-                
-                {showFullKey && apiKey && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                    {locale === 'ko' 
-                      ? '⚠️ 이 키는 10초 후 자동으로 숨겨집니다. 안전한 곳에 저장하세요.' 
-                      : '⚠️ This key will be hidden automatically in 10 seconds. Save it securely.'
-                    }
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-sm font-medium">
-                  {locale === 'ko' ? '서버 URL' : 'Server URL'}
-                </label>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="flex-1 p-2 bg-muted rounded font-mono text-sm">
-                    {serverUrl}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(serverUrl)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 2. 경로 설정 섹션 */}
+          {/* 프로젝트 경로 설정 */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Folder className="h-5 w-5" />
-                {locale === 'ko' ? '경로 설정' : 'Path Configuration'}
+                {locale === 'ko' ? '프로젝트 설정' : 'Project Settings'}
               </CardTitle>
               <CardDescription>
                 {locale === 'ko' 
-                  ? '프로젝트 이름을 결정하는 중요한 설정입니다' 
-                  : 'Important setting that determines project names'
+                  ? '기본 프로젝트 폴더 경로를 설정하세요' 
+                  : 'Set your default project folder path'
                 }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">
-                  {locale === 'ko' ? '작업 디렉토리' : 'Working Directory'}
-                </label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {locale === 'ko' 
-                    ? '프로젝트들이 위치한 기본 디렉토리 (예: /Users/username/projects)' 
-                    : 'Base directory where your projects are located'
-                  }
-                </p>
+              <div className="space-y-2">
+                <Label htmlFor="project-path">
+                  {locale === 'ko' ? '기본 프로젝트 경로' : 'Default Project Path'}
+                </Label>
                 <Input
+                  id="project-path"
                   value={projectPath}
                   onChange={(e) => setProjectPath(e.target.value)}
                   placeholder="/Users/username/projects"
+                  className="font-mono"
+                  disabled={loading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {locale === 'ko' 
+                    ? '새 프로젝트 생성 시 이 경로를 기본값으로 사용합니다' 
+                    : 'This path will be used as default when creating new projects'
+                  }
+                </p>
+              </div>
+
+              <Button 
+                onClick={handleSaveSettings} 
+                disabled={saving || loading}
+                className="w-full"
+              >
+                {saving ? (
+                  <>
+                    <Save className="mr-2 h-4 w-4 animate-spin" />
+                    {locale === 'ko' ? '저장 중...' : 'Saving...'}
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    {locale === 'ko' ? '설정 저장' : 'Save Settings'}
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* 언어 설정 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                {locale === 'ko' ? '언어 설정' : 'Language Settings'}
+              </CardTitle>
+              <CardDescription>
+                {locale === 'ko' 
+                  ? '인터페이스 언어를 선택하세요' 
+                  : 'Choose your interface language'
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                {locale === 'ko' 
+                  ? '현재 언어: 한국어. 상단 언어 토글로 변경할 수 있습니다.' 
+                  : 'Current language: English. You can change it using the language toggle in the header.'
+                }
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* API 키 관리 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  {locale === 'ko' ? 'API 키 관리' : 'API Key Management'}
+                </div>
+                <Button 
+                  size="sm" 
+                  onClick={handleCreateApiKey}
+                  disabled={creatingKey || !newKeyName.trim()}
+                >
+                  {creatingKey ? (
+                    <>
+                      <Save className="mr-2 h-4 w-4 animate-spin" />
+                      {locale === 'ko' ? '생성 중...' : 'Creating...'}
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-2 h-4 w-4" />
+                      {locale === 'ko' ? '새 키 생성' : 'Create Key'}
+                    </>
+                  )}
+                </Button>
+              </CardTitle>
+              <CardDescription>
+                {locale === 'ko' 
+                  ? 'CLI 도구 연동을 위한 API 키를 관리하세요' 
+                  : 'Manage API keys for CLI tool integration'
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* 새 키 생성 입력 */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder={locale === 'ko' ? 'API 키 이름 (예: CLI Tool)' : 'API key name (e.g., CLI Tool)'}
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  disabled={creatingKey}
                 />
               </div>
 
-              <Button onClick={saveSettings} disabled={saving}>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                {saving 
-                  ? (locale === 'ko' ? '저장 중...' : 'Saving...') 
-                  : (locale === 'ko' ? '설정 저장' : 'Save Settings')
-                }
-              </Button>
-
-              <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  {locale === 'ko' 
-                    ? '💡 작업 디렉토리를 설정하면 프로젝트 이름이 자동으로 추출됩니다.' 
-                    : '💡 Setting working directory helps extract project names automatically.'
-                  }
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                  {locale === 'ko' 
-                    ? '예: /Users/john/work → work 폴더의 프로젝트들이 올바른 이름으로 업로드됩니다' 
-                    : 'Example: /Users/john/work → Projects in work folder will be uploaded with correct names'
-                  }
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 3. CLI 설치 및 설정 섹션 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Terminal className="h-5 w-5" />
-                {locale === 'ko' ? 'CLI 설치 및 설정' : 'CLI Installation & Setup'}
-              </CardTitle>
-              <CardDescription>
-                {locale === 'ko' 
-                  ? 'CLI 도구를 다운로드하고 설정하세요' 
-                  : 'Download and configure the CLI tool'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              {/* API 키 목록 */}
               <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium mb-2">
-                    {locale === 'ko' ? '1. CLI 다운로드 및 설치' : '1. Download and install CLI'}
-                  </p>
-                  <div className="relative">
-                    <pre className="p-3 bg-gray-900 text-gray-100 rounded text-xs overflow-x-auto">
-                      <code>{`# Download CLI
-curl -o vibe-upload.js "${serverUrl}/api/download/cli?type=script"
-chmod +x vibe-upload.js
-sudo mv vibe-upload.js /usr/local/bin/vibe-upload`}</code>
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute top-1 right-1"
-                      onClick={() => copyToClipboard(`curl -o vibe-upload.js "${serverUrl}/api/download/cli?type=script" && chmod +x vibe-upload.js && sudo mv vibe-upload.js /usr/local/bin/vibe-upload`)}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-                
-                <div>
-                  <p className="text-sm font-medium mb-2">
-                    {locale === 'ko' ? '2. API 키 설정' : '2. Configure API key'}
-                  </p>
-                  <div className="relative">
-                    <pre className="p-3 bg-gray-900 text-gray-100 rounded text-xs overflow-x-auto">
-                      <code>{`vibe-upload config --api-key ${apiKey || apiKeyPrefix || 'YOUR_API_KEY'} --server-url ${serverUrl}`}</code>
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute top-1 right-1"
-                      onClick={() => copyToClipboard(`vibe-upload config --api-key ${apiKey || apiKeyPrefix || 'YOUR_API_KEY'} --server-url ${serverUrl}`)}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-2">
-                    {locale === 'ko' ? '3. 업로드 실행' : '3. Run upload'}
-                  </p>
-                  <div className="relative">
-                    <pre className="p-3 bg-gray-900 text-gray-100 rounded text-xs overflow-x-auto">
-                      <code>{getUploadCommand()}</code>
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute top-1 right-1"
-                      onClick={() => copyToClipboard(getUploadCommand())}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              
-              {showFullKey && apiKey && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-300">
-                      {locale === 'ko' 
-                        ? '새 API 키가 생성되었습니다!' 
-                        : 'New API key created!'
-                      }
-                    </p>
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                      {locale === 'ko' 
-                        ? '위 명령어에 자동으로 포함되었습니다. 이 키는 10초 후 숨겨집니다.' 
-                        : 'Automatically included in the command above. This key will be hidden in 10 seconds.'
-                      }
+                {apiKeysLoading ? (
+                  <div className="text-center py-4">
+                    <Save className="h-6 w-6 animate-spin mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {locale === 'ko' ? 'API 키를 불러오는 중...' : 'Loading API keys...'}
                     </p>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 4. 고급 설정 - 수동 업로드 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Upload className="h-5 w-5" />
-                {locale === 'ko' ? '수동 업로드' : 'Manual Upload'}
-              </CardTitle>
-              <CardDescription>
-                {locale === 'ko' 
-                  ? '특정 프로젝트를 수동으로 업로드하세요' 
-                  : 'Manually upload specific projects'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  {locale === 'ko' ? '전체 세션 업로드' : 'Upload All Sessions'}
-                </label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {locale === 'ko' 
-                    ? 'Claude의 모든 프로젝트 세션을 한 번에 업로드합니다' 
-                    : 'Upload all Claude project sessions at once'
-                  }
-                </p>
-                <div className="relative">
-                  <pre className="p-3 bg-muted rounded text-sm font-mono">
-                    vibe-upload ~/.claude/projects
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-1 right-1"
-                    onClick={() => copyToClipboard('vibe-upload ~/.claude/projects')}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  {locale === 'ko' ? '특정 프로젝트 업로드' : 'Upload Specific Project'}
-                </label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {locale === 'ko' 
-                    ? 'project-session을 실제 프로젝트 폴더명으로 바꿔주세요' 
-                    : 'Replace project-session with your actual project folder name'
-                  }
-                </p>
-                <div className="relative">
-                  <pre className="p-3 bg-muted rounded text-sm font-mono">
-                    vibe-upload ~/.claude/projects/[project-session]/
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-1 right-1"
-                    onClick={() => copyToClipboard('vibe-upload ~/.claude/projects/[project-session]/')}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
+                ) : apiKeys.length === 0 ? (
+                  <div className="text-center py-6 border-2 border-dashed border-muted-foreground/20 rounded-lg">
+                    <Key className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {locale === 'ko' ? '생성된 API 키가 없습니다' : 'No API keys created'}
+                    </p>
+                  </div>
+                ) : (
+                  apiKeys.map((apiKey) => (
+                    <div key={apiKey.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{apiKey.name}</span>
+                          <Badge variant={apiKey.is_active ? 'default' : 'secondary'}>
+                            {apiKey.is_active ? (locale === 'ko' ? '활성' : 'Active') : (locale === 'ko' ? '비활성' : 'Inactive')}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
+                            {showFullKey[apiKey.id] 
+                              ? (apiKey.full_key || `${apiKey.key_prefix}...`) 
+                              : `${apiKey.key_prefix}${'*'.repeat(20)}`
+                            }
+                          </code>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setShowFullKey(prev => ({ ...prev, [apiKey.id]: !prev[apiKey.id] }))}
+                          >
+                            {showFullKey[apiKey.id] ? (
+                              <EyeOff className="h-3 w-3" />
+                            ) : (
+                              <Eye className="h-3 w-3" />
+                            )}
+                          </Button>
+                          {(showFullKey[apiKey.id] || apiKey.full_key) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copyApiKey(apiKey.full_key || `${apiKey.key_prefix}...`)}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {locale === 'ko' ? '생성일' : 'Created'}: {new Date(apiKey.created_at).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US')}
+                          {apiKey.last_used && (
+                            <> • {locale === 'ko' ? '마지막 사용' : 'Last used'}: {new Date(apiKey.last_used).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US')}</>
+                          )}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteApiKey(apiKey.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* 5. 자동 업로드 설정 */}
+          {/* API 서버 정보 */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                {locale === 'ko' ? '자동 업로드 설정 (Cron)' : 'Automatic Upload (Cron)'}
+                <Globe className="h-5 w-5" />
+                {locale === 'ko' ? 'API 서버 정보' : 'API Server Information'}
               </CardTitle>
               <CardDescription>
                 {locale === 'ko' 
-                  ? '정기적으로 자동 업로드를 실행하도록 설정하세요' 
-                  : 'Configure periodic automatic uploads'
+                  ? '현재 연결된 API 서버 정보' 
+                  : 'Current API server connection details'
                 }
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium">
-                    {locale === 'ko' ? '매시간' : 'Every Hour'}
-                  </label>
-                  <pre className="p-2 bg-muted rounded text-xs font-mono mt-1">
-                    0 * * * * vibe-upload ~/.claude/projects
-                  </pre>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">
-                    {locale === 'ko' ? '매일 자정' : 'Daily at Midnight'}
-                  </label>
-                  <pre className="p-2 bg-muted rounded text-xs font-mono mt-1">
-                    0 0 * * * vibe-upload ~/.claude/projects
-                  </pre>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">
-                    {locale === 'ko' ? '30분마다' : 'Every 30 minutes'}
-                  </label>
-                  <pre className="p-2 bg-muted rounded text-xs font-mono mt-1">
-                    */30 * * * * vibe-upload ~/.claude/projects
-                  </pre>
-                </div>
+            <CardContent className="space-y-2">
+              <div className="flex items-center justify-between py-2 border-b">
+                <span className="text-sm font-medium">
+                  {locale === 'ko' ? 'API 서버 URL' : 'API Server URL'}
+                </span>
+                <span className="text-sm text-muted-foreground font-mono">
+                  http://localhost:3001
+                </span>
               </div>
-
-              <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg">
-                <p className="text-sm text-amber-700 dark:text-amber-300">
-                  {locale === 'ko' 
-                    ? '💡 crontab -e 명령어로 크론탭을 열고 위 설정을 추가하세요' 
-                    : '💡 Open crontab with crontab -e command and add the above configuration'
-                  }
-                </p>
+              <div className="flex items-center justify-between py-2 border-b">
+                <span className="text-sm font-medium">
+                  {locale === 'ko' ? '프록시 경로' : 'Proxy Path'}
+                </span>
+                <span className="text-sm text-muted-foreground font-mono">
+                  /api/proxy/*
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm font-medium">
+                  {locale === 'ko' ? '연결 상태' : 'Connection Status'}
+                </span>
+                <span className="text-sm text-green-600 font-medium">
+                  {locale === 'ko' ? '연결됨' : 'Connected'}
+                </span>
               </div>
             </CardContent>
           </Card>
 
-          {/* 6. API 직접 호출 */}
+          {/* 계정 정보 */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Code className="h-5 w-5" />
-                {locale === 'ko' ? 'API 직접 호출' : 'Direct API Call'}
+                <SettingsIcon className="h-5 w-5" />
+                {locale === 'ko' ? '계정 정보' : 'Account Information'}
               </CardTitle>
               <CardDescription>
                 {locale === 'ko' 
-                  ? 'cURL을 사용한 직접 API 호출 예제' 
-                  : 'Direct API call example using cURL'
+                  ? '현재 로그인한 계정 정보' 
+                  : 'Your current account information'
                 }
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg text-xs overflow-x-auto">
-                <code>{`curl -X POST ${serverUrl}/api/upload \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "projectName": "my-project",
-    "fileName": "session.jsonl",
-    "content": "{\\"type\\":\\"user\\",\\"message\\":{\\"content\\":\\"Hello\\"}}"
-  }'`}</code>
-              </pre>
-            </CardContent>
-          </Card>
-
-          {/* 7. 다운로드 섹션 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Download className="h-5 w-5" />
-                {locale === 'ko' ? '다운로드' : 'Downloads'}
-              </CardTitle>
-              <CardDescription>
-                {locale === 'ko' 
-                  ? 'CLI 도구와 자동화 스크립트를 다운로드하세요' 
-                  : 'Download CLI tool and automation scripts'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-3">
-                <Button
-                  variant="outline"
-                  onClick={() => window.location.href = '/api/download/cli?type=script'}
-                >
-                  <Terminal className="mr-2 h-4 w-4" />
-                  {locale === 'ko' ? 'CLI 도구' : 'CLI Tool'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => downloadScript('auto-upload.sh')}
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  {locale === 'ko' ? '자동 스크립트' : 'Auto Script'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => downloadScript('viberc')}
-                >
-                  <Code className="mr-2 h-4 w-4" />
-                  {locale === 'ko' ? '설정 파일' : 'Config File'}
-                </Button>
+            <CardContent className="space-y-2">
+              <div className="flex items-center justify-between py-2 border-b">
+                <span className="text-sm font-medium">
+                  {locale === 'ko' ? '이메일' : 'Email'}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {user?.email || 'Not available'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b">
+                <span className="text-sm font-medium">
+                  {locale === 'ko' ? '이름' : 'Name'}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {user?.display_name || 'Not set'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm font-medium">
+                  {locale === 'ko' ? '사용자 ID' : 'User ID'}
+                </span>
+                <span className="text-sm text-muted-foreground font-mono">
+                  {user?.id || 'Not available'}
+                </span>
               </div>
             </CardContent>
           </Card>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +19,7 @@ import { AuthRedirect } from '@/components/auth/auth-redirect'
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -26,27 +27,27 @@ export default function LoginPage() {
   
   const locale = useLocaleStore((state) => state.locale)
   const t = useTranslation(locale)
-  const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const result = await signIn(email, password)
 
-      if (error) {
+      if (result.success) {
+        toast({
+          title: locale === 'ko' ? '로그인 성공' : 'Login successful',
+          description: locale === 'ko' ? '환영합니다!' : 'Welcome back!',
+        })
+        router.push('/')
+        router.refresh()
+      } else {
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: t.auth.login.loginError,
+          description: result.error || 'Login failed',
         })
-      } else {
-        router.push('/')
-        router.refresh()
       }
     } catch (error) {
       toast({
@@ -71,17 +72,17 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight">
-            {t.auth.login.title}
+            {locale === 'ko' ? '로그인' : 'Sign in'}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            {t.auth.login.subtitle}
+            {locale === 'ko' ? '계정에 로그인하세요' : 'Sign in to your account'}
           </p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="email">{t.auth.login.email}</Label>
+              <Label htmlFor="email">{locale === 'ko' ? '이메일' : 'Email'}</Label>
               <Input
                 id="email"
                 type="email"
@@ -95,7 +96,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <Label htmlFor="password">{t.auth.login.password}</Label>
+              <Label htmlFor="password">{locale === 'ko' ? '비밀번호' : 'Password'}</Label>
               <Input
                 id="password"
                 type="password"
@@ -121,7 +122,7 @@ export default function LoginPage() {
                 htmlFor="remember-me"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                {t.auth.login.rememberMe}
+                {locale === 'ko' ? '로그인 상태 유지' : 'Remember me'}
               </label>
             </div>
 
@@ -129,7 +130,7 @@ export default function LoginPage() {
               href="/forgot-password"
               className="text-sm text-primary hover:underline"
             >
-              {t.auth.login.forgotPassword}
+              {locale === 'ko' ? '비밀번호를 잊으셨나요?' : 'Forgot your password?'}
             </Link>
           </div>
 
@@ -144,18 +145,17 @@ export default function LoginPage() {
                 Loading...
               </>
             ) : (
-              t.auth.login.signIn
+              locale === 'ko' ? '로그인' : 'Sign in'
             )}
           </Button>
 
-
           <p className="text-center text-sm text-muted-foreground">
-            {t.auth.login.noAccount}{' '}
+            {locale === 'ko' ? '계정이 없나요?' : 'Don\'t have an account?'}{' '}
             <Link
               href="/signup"
               className="font-medium text-primary hover:underline"
             >
-              {t.auth.login.signUp}
+              {locale === 'ko' ? '회원가입' : 'Sign up'}
             </Link>
           </p>
         </form>

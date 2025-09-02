@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,6 +18,7 @@ import { AuthRedirect } from '@/components/auth/auth-redirect'
 export default function SignupPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { signUp } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -26,7 +27,6 @@ export default function SignupPage() {
   
   const locale = useLocaleStore((state) => state.locale)
   const t = useTranslation(locale)
-  const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,7 +35,7 @@ export default function SignupPage() {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: t.auth.signup.passwordMismatch,
+        description: locale === 'ko' ? '비밀번호가 일치하지 않습니다' : 'Passwords do not match',
       })
       return
     }
@@ -43,34 +43,26 @@ export default function SignupPage() {
     setIsLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: name,
-          },
-        },
-      })
+      const result = await signUp(email, password, name)
 
-      if (error) {
+      if (result.success) {
+        toast({
+          title: locale === 'ko' ? '회원가입 완료' : 'Signup successful',
+          description: locale === 'ko' ? '로그인 페이지로 이동합니다' : 'Redirecting to login page',
+        })
+        router.push('/login')
+      } else {
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: error.message || t.auth.signup.signupError,
+          description: result.error || 'Signup failed',
         })
-      } else {
-        toast({
-          title: 'Success',
-          description: 'Please check your email to confirm your account.',
-        })
-        router.push('/login')
       }
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: t.auth.signup.signupError,
+        description: 'An unexpected error occurred',
       })
     } finally {
       setIsLoading(false)
@@ -89,17 +81,17 @@ export default function SignupPage() {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight">
-            {t.auth.signup.title}
+            {locale === 'ko' ? '회원가입' : 'Sign up'}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            {t.auth.signup.subtitle}
+            {locale === 'ko' ? '새로운 계정을 만드세요' : 'Create a new account'}
           </p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="name">{t.auth.signup.name}</Label>
+              <Label htmlFor="name">{locale === 'ko' ? '이름' : 'Name'}</Label>
               <Input
                 id="name"
                 type="text"
@@ -113,7 +105,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <Label htmlFor="email">{t.auth.signup.email}</Label>
+              <Label htmlFor="email">{locale === 'ko' ? '이메일' : 'Email'}</Label>
               <Input
                 id="email"
                 type="email"
@@ -127,7 +119,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <Label htmlFor="password">{t.auth.signup.password}</Label>
+              <Label htmlFor="password">{locale === 'ko' ? '비밀번호' : 'Password'}</Label>
               <Input
                 id="password"
                 type="password"
@@ -141,7 +133,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <Label htmlFor="confirm-password">{t.auth.signup.confirmPassword}</Label>
+              <Label htmlFor="confirm-password">{locale === 'ko' ? '비밀번호 확인' : 'Confirm Password'}</Label>
               <Input
                 id="confirm-password"
                 type="password"
@@ -156,14 +148,15 @@ export default function SignupPage() {
           </div>
 
           <div className="text-xs text-muted-foreground text-center">
-            {t.auth.signup.termsAgree}{' '}
+            {locale === 'ko' ? '가입함으로써' : 'By signing up, you agree to our'}{' '}
             <Link href="/terms" className="text-primary hover:underline">
-              {t.auth.signup.terms}
+              {locale === 'ko' ? '이용약관' : 'Terms'}
             </Link>{' '}
-            {t.auth.signup.and}{' '}
+            {locale === 'ko' ? '및' : 'and'}{' '}
             <Link href="/privacy" className="text-primary hover:underline">
-              {t.auth.signup.privacy}
+              {locale === 'ko' ? '개인정보처리방침' : 'Privacy Policy'}
             </Link>
+            {locale === 'ko' ? '에 동의합니다.' : '.'}
           </div>
 
           <Button
@@ -177,18 +170,17 @@ export default function SignupPage() {
                 Loading...
               </>
             ) : (
-              t.auth.signup.createAccount
+              locale === 'ko' ? '계정 만들기' : 'Create Account'
             )}
           </Button>
 
-
           <p className="text-center text-sm text-muted-foreground">
-            {t.auth.signup.haveAccount}{' '}
+            {locale === 'ko' ? '이미 계정이 있나요?' : 'Already have an account?'}{' '}
             <Link
               href="/login"
               className="font-medium text-primary hover:underline"
             >
-              {t.auth.signup.signIn}
+              {locale === 'ko' ? '로그인' : 'Sign in'}
             </Link>
           </p>
         </form>

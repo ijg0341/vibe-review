@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/auth-context'
 import { useLocaleStore } from '@/lib/locale-store'
 import { useTranslation } from '@/lib/translations'
+import { useProjects } from '@/hooks/use-api'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { ProtectedRoute } from '@/components/auth/protected-route'
 import { Button } from '@/components/ui/button'
@@ -28,125 +28,26 @@ import { formatDistanceToNow } from 'date-fns'
 import { ko, enUS } from 'date-fns/locale'
 import { CreateProjectModal } from '@/components/projects/create-project-modal'
 
+// API 서버 기반 프로젝트 타입 (uploaded_files 기반)
 interface Project {
   id: string
   name: string
-  folder_path: string
   description?: string
-  owner_id: string
-  created_at: string
-  member_count?: number
-  session_count?: number
-  last_activity?: string
-  owner_email?: string
-  owner_name?: string
-  last_uploader_email?: string
-  last_uploader_name?: string
+  file_count: number
+  total_size: number
+  last_updated: string
+  tool_name: string
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([])
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   
   const router = useRouter()
-  const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
-  const supabase = createClient()
-
-  // 프로젝트 목록 조회
-  const fetchProjects = async () => {
-    if (!user?.id) return
-
-    try {
-      setLoading(true)
-      
-      // Get projects with owner and last uploader info
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select(`
-          *,
-          project_members(count),
-          project_sessions(*)
-        `)
-        .order('created_at', { ascending: false })
-
-      if (projectsError) {
-        console.error('Error fetching projects:', projectsError)
-        return
-      }
-      
-      // Fetch owner profiles separately
-      const ownerIds = [...new Set(projectsData?.map(p => p.owner_id) || [])]
-      const { data: ownerProfiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, email, display_name')
-        .in('id', ownerIds)
-      
-      if (profilesError) {
-        console.error('Error fetching owner profiles:', profilesError)
-      }
-
-      // Process the data
-      const processedProjects = projectsData?.map(project => {
-        const sessions = project.project_sessions || []
-        const lastSession = sessions.sort((a: any, b: any) => 
-          new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
-        )[0]
-        
-        // Find owner profile
-        const ownerProfile = ownerProfiles?.find(p => p.id === project.owner_id)
-
-        return {
-          id: project.id,
-          name: project.name,
-          folder_path: project.folder_path,
-          description: project.description,
-          owner_id: project.owner_id,
-          created_at: project.created_at,
-          member_count: project.project_members?.[0]?.count || 1,
-          session_count: sessions.length,
-          last_activity: lastSession?.uploaded_at,
-          owner_email: ownerProfile?.email,
-          owner_name: ownerProfile?.display_name,
-          last_uploader_id: lastSession?.user_id
-        }
-      }) || []
-
-      // If we have sessions, fetch uploader profiles
-      const uploaderIds = [...new Set(processedProjects
-        .map(p => p.last_uploader_id)
-        .filter(Boolean))]
-      
-      if (uploaderIds.length > 0) {
-        const { data: uploaderProfiles } = await supabase
-          .from('profiles')
-          .select('id, email, display_name')
-          .in('id', uploaderIds)
-        
-        // Add uploader info to projects
-        processedProjects.forEach(project => {
-          if (project.last_uploader_id) {
-            const uploader = uploaderProfiles?.find(p => p.id === project.last_uploader_id)
-            if (uploader) {
-              (project as any).last_uploader_email = uploader.email;
-              (project as any).last_uploader_name = uploader.display_name
-            }
-          }
-        })
-      }
-
-      setProjects(processedProjects)
-      setFilteredProjects(processedProjects)
-    } catch (error) {
-      console.error('Error in fetchProjects:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { projects, total, loading, error, fetchProjects } = useProjects()
 
   // 검색 필터링
   useEffect(() => {
@@ -157,15 +58,27 @@ export default function ProjectsPage() {
 
     const filtered = projects.filter(project => 
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.folder_path.toLowerCase().includes(searchQuery.toLowerCase())
+      (project.description && project.description.toLowerCase().includes(searchQuery.toLowerCase()))
     )
     setFilteredProjects(filtered)
   }, [searchQuery, projects])
 
+  // 프로젝트 목록 로드 함수 메모이제이션
+  const loadProjects = useCallback(() => {
+    fetchProjects({ page: 1, limit: 50 })
+  }, [fetchProjects])
+
+  // 프로젝트 목록 로드
   useEffect(() => {
-    fetchProjects()
-  }, [user?.id])
+    loadProjects()
+  }, [loadProjects])
+
+  // 에러 처리  
+  useEffect(() => {
+    if (error) {
+      console.error('Projects API Error:', error)
+    }
+  }, [error])
 
   // 날짜 포맷팅
   const formatDate = (dateString: string | null) => {
@@ -202,7 +115,7 @@ export default function ProjectsPage() {
             </Button>
           </div>
 
-          {/* 통계 카드 */}
+          {/* 통계 카드 - API 서버 스키마에 맞게 수정 */}
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="border-border/50">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -212,7 +125,7 @@ export default function ProjectsPage() {
                 <Folder className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{projects.length}</div>
+                <div className="text-2xl font-bold">{total || projects.length}</div>
                 <p className="text-xs text-muted-foreground">
                   {locale === 'ko' ? '활성 프로젝트' : 'Active projects'}
                 </p>
@@ -222,16 +135,16 @@ export default function ProjectsPage() {
             <Card className="border-border/50">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {locale === 'ko' ? '총 세션' : 'Total Sessions'}
+                  {locale === 'ko' ? '총 파일' : 'Total Files'}
                 </CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {projects.reduce((total, p) => total + (p.session_count || 0), 0)}
+                  {projects.reduce((total, p) => total + (p.file_count || 0), 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {locale === 'ko' ? '업로드된 세션' : 'Uploaded sessions'}
+                  {locale === 'ko' ? '업로드된 파일' : 'Uploaded files'}
                 </p>
               </CardContent>
             </Card>
@@ -239,16 +152,16 @@ export default function ProjectsPage() {
             <Card className="border-border/50">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {locale === 'ko' ? '팀 멤버' : 'Team Members'}
+                  {locale === 'ko' ? '총 용량' : 'Total Size'}
                 </CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {projects.reduce((total, p) => Math.max(total, p.member_count || 0), 0)}
+                  {(projects.reduce((total, p) => total + (p.total_size || 0), 0) / 1024 / 1024).toFixed(1)}MB
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {locale === 'ko' ? '최대 프로젝트 멤버' : 'Max project members'}
+                  {locale === 'ko' ? '파일 총 크기' : 'Total file size'}
                 </p>
               </CardContent>
             </Card>
@@ -338,39 +251,36 @@ export default function ProjectsPage() {
                           
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              {project.member_count || 1}
+                              <FileText className="h-3 w-3" />
+                              {project.file_count || 0}
                             </span>
                             <span className="flex items-center gap-1">
-                              <FileText className="h-3 w-3" />
-                              {project.session_count || 0}
+                              <Users className="h-3 w-3" />
+                              {project.tool_name}
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {formatDate(project.last_activity || null)}
+                              {formatDate(project.last_updated)}
                             </span>
                           </div>
 
                           <div className="pt-2 border-t space-y-1">
                             <div className="flex items-center justify-between text-xs">
                               <span className="text-muted-foreground">
-                                {locale === 'ko' ? '생성자' : 'Creator'}
+                                {locale === 'ko' ? 'AI 도구' : 'AI Tool'}
                               </span>
                               <span className="font-medium truncate max-w-[150px]">
-                                {project.owner_name || project.owner_email?.split('@')[0] || 'Unknown'}
+                                {project.tool_name || 'Unknown'}
                               </span>
                             </div>
-                            {project.last_activity && (
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">
-                                  {locale === 'ko' ? '최근 업로드' : 'Last upload'}
-                                </span>
-                                <span className="font-medium truncate max-w-[150px]">
-                                  {project.last_uploader_name || project.last_uploader_email?.split('@')[0] || 
-                                   project.owner_name || project.owner_email?.split('@')[0] || 'Unknown'}
-                                </span>
-                              </div>
-                            )}
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">
+                                {locale === 'ko' ? '파일 크기' : 'File Size'}
+                              </span>
+                              <span className="font-medium truncate max-w-[150px]">
+                                {((project.total_size || 0) / 1024 / 1024).toFixed(1)}MB
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </CardContent>
@@ -388,7 +298,7 @@ export default function ProjectsPage() {
         open={createModalOpen} 
         onOpenChange={setCreateModalOpen}
         onProjectCreated={() => {
-          fetchProjects()
+          loadProjects()
           setCreateModalOpen(false)
         }}
       />

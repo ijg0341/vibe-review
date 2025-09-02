@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/auth-context'
 import { useLocaleStore } from '@/lib/locale-store'
 import { useTranslation } from '@/lib/translations'
+import { apiClient } from '@/lib/api-client'
 import {
   Dialog,
   DialogContent,
@@ -47,26 +47,21 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
   const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
-  const supabase = createClient()
   const { toast } = useToast()
 
-  // 데이터베이스에서 사용자 설정 불러오기
+  // API에서 사용자 설정 불러오기
   useEffect(() => {
     const fetchUserSettings = async () => {
       if (!user?.id || !open) return
       
       try {
-        const { data: settings, error } = await supabase
-          .from('user_settings')
-          .select('project_path')
-          .eq('user_id', user.id)
-          .single()
+        const response = await apiClient.getSettings()
         
-        if (!error && settings?.project_path) {
-          setBaseProjectPath(settings.project_path)
+        if (response.success && response.data?.default_project_path) {
+          setBaseProjectPath(response.data.default_project_path)
           // 기본 경로가 있고 폴더 경로가 비어있으면 자동 설정
           if (!folderPath) {
-            setFolderPath(settings.project_path + '/')
+            setFolderPath(response.data.default_project_path + '/')
           }
         }
       } catch (error) {
@@ -75,7 +70,7 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
     }
     
     fetchUserSettings()
-  }, [open, user?.id]) // 모달이 열릴 때마다 확인
+  }, [open, user?.id, folderPath]) // folderPath 의존성 추가
 
   // 프로젝트 경로를 Claude 히스토리 경로로 변환
   const convertToClaudePath = (projectPath: string) => {
@@ -111,38 +106,35 @@ export function CreateProjectModal({ open, onOpenChange, onProjectCreated }: Cre
     try {
       setCreating(true)
 
-      // find_or_create_project 함수 호출
-      const { data, error } = await supabase.rpc('find_or_create_project', {
-        p_name: projectName,
-        p_folder_path: folderPath,
-        p_user_id: user.id,
-        p_description: description || null
+      // API를 통한 프로젝트 생성/찾기
+      const response = await apiClient.findOrCreateProject({
+        folder_path: folderPath
       })
 
-      if (error) {
-        console.error('Error creating project:', error)
+      if (!response.success) {
+        console.error('Error creating project:', response.error)
         toast({
           variant: 'destructive',
           title: locale === 'ko' ? '프로젝트 생성 실패' : 'Failed to create project',
-          description: error.message
+          description: response.error || 'Unknown error occurred'
         })
         return
       }
 
-      if (data && data.length > 0) {
-        const project = data[0]
+      if (response.data) {
+        const project = response.data
         setCreatedProject({
-          id: project.project_id,
-          name: project.project_name,
+          id: project.id || project.project_id,
+          name: project.name || project.project_name || projectName,
           folder_path: folderPath,
-          is_new: project.is_new
+          is_new: project.is_new !== false // 새 프로젝트로 간주
         })
 
         toast({
-          title: project.is_new 
+          title: project.is_new !== false
             ? (locale === 'ko' ? '프로젝트 생성됨' : 'Project created')
             : (locale === 'ko' ? '기존 프로젝트 찾음' : 'Existing project found'),
-          description: project.is_new
+          description: project.is_new !== false
             ? (locale === 'ko' ? '새 프로젝트가 생성되었습니다' : 'New project has been created')
             : (locale === 'ko' ? '동일한 이름의 프로젝트가 이미 있습니다' : 'A project with the same name already exists')
         })
