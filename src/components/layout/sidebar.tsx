@@ -14,7 +14,8 @@ import {
   Plus,
   History,
   Users,
-  Folder
+  Folder,
+  BookOpen
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -40,36 +41,41 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
   }> = [
     {
       label: locale === 'ko' ? '시작하기' : 'Getting Started',
-      icon: Settings,
-      href: "/settings",
+      icon: BookOpen,
+      href: "/getting-started",
     },
     {
       label: t.sidebar.team,
       icon: Users,
       href: "/team",
     },
+    // {
+    //   label: locale === 'ko' ? '프로젝트' : 'Projects',
+    //   icon: Folder,
+    //   href: "/projects",
+    // },
+    // {
+    //   label: t.sidebar.dashboard,
+    //   icon: Home,
+    //   href: "/",
+    //   badge: locale === 'ko' ? '준비중' : 'Coming Soon',
+    // },
+    // {
+    //   label: t.sidebar.myPrompts,
+    //   icon: History,
+    //   href: "/my-prompts",
+    //   badge: locale === 'ko' ? '준비중' : 'Coming Soon',
+    // },
+    // {
+    //   label: t.sidebar.reviews,
+    //   icon: MessageSquare,
+    //   href: "/reviews",
+    //   badge: locale === 'ko' ? '준비중' : 'Coming Soon',
+    // },
     {
-      label: locale === 'ko' ? '프로젝트' : 'Projects',
-      icon: Folder,
-      href: "/projects",
-    },
-    {
-      label: t.sidebar.dashboard,
-      icon: Home,
-      href: "/",
-      badge: locale === 'ko' ? '준비중' : 'Coming Soon',
-    },
-    {
-      label: t.sidebar.myPrompts,
-      icon: History,
-      href: "/my-prompts",
-      badge: locale === 'ko' ? '준비중' : 'Coming Soon',
-    },
-    {
-      label: t.sidebar.reviews,
-      icon: MessageSquare,
-      href: "/reviews",
-      badge: locale === 'ko' ? '준비중' : 'Coming Soon',
+      label: locale === 'ko' ? '설정' : 'Settings',
+      icon: Settings,
+      href: "/settings",
     },
   ]
 

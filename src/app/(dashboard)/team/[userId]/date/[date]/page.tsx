@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/auth-context'
+import { useTeamMemberDaily } from '@/hooks/use-query-api'
+import { apiClient } from '@/lib/api-client'
 import { useLocaleStore } from '@/lib/locale-store'
 import { useTranslation } from '@/lib/translations'
 import { useRouter, useParams } from 'next/navigation'
@@ -32,31 +33,42 @@ import { ko, enUS } from 'date-fns/locale'
 
 interface TeamMember {
   id: string
-  email: string
-  display_name?: string
-  avatar_url?: string
+  full_name?: string
+  username?: string
+  role: 'admin' | 'member'
 }
 
-interface Project {
-  id: string
-  name: string
-  description?: string
-  folder_path: string
+interface DailyStats {
+  overview: {
+    total_sessions: number
+    total_size: number
+    average_size: number
+    unique_projects: number
+  }
+  tools: Record<string, number>
+  hourly_distribution: Record<string, number>
+  projects: string[]
+  time_span: {
+    first_session: string
+    last_session: string
+  }
 }
 
-interface ProjectSession {
+interface DailySession {
   id: string
-  project_id: string
-  session_name: string
-  file_name?: string
-  file_path?: string
-  uploaded_at: string
-  session_count: number
-  processed_lines: number
-  session_start_date?: string
-  session_end_date?: string
-  project?: Project
-  first_user_prompt?: string
+  filename: string
+  upload_time: string
+  file_size: number
+  tool_name: string
+  project: string
+  project_name?: string
+  upload_status: string
+  metadata?: Record<string, any>
+  session_data: {
+    mime_type: string
+    file_hash: string
+    storage_path: string
+  }
 }
 
 interface SessionLine {
@@ -70,228 +82,90 @@ interface SessionLine {
 }
 
 export default function TeamDateDetailPage() {
-  const [member, setMember] = useState<TeamMember | null>(null)
-  const [sessions, setSessions] = useState<ProjectSession[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [sessionLines, setSessionLines] = useState<SessionLine[]>([])
-  const [allSessionLines, setAllSessionLines] = useState<SessionLine[]>([])
   const [linesLoading, setLinesLoading] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [rightPanelWidth, setRightPanelWidth] = useState(320) // 기본 너비 320px
+  const [rightPanelWidth, setRightPanelWidth] = useState(320)
   const [isResizing, setIsResizing] = useState(false)
   
   const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
-  const supabase = createClient()
   const router = useRouter()
   const params = useParams()
   
   const userId = params.userId as string
   const dateStr = params.date as string
   const targetDate = dateStr ? parseISO(dateStr) : new Date()
-
-  // 멤버 정보 가져오기
-  const fetchMemberInfo = async () => {
-    if (!userId) return
-
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (error) {
-        console.error('Error fetching member:', error)
-        return
-      }
-
-      setMember(data)
-    } catch (error) {
-      console.error('Error in fetchMemberInfo:', error)
-    }
+  
+  // 실제 API 호출로 해당 날짜의 멤버 활동 데이터 가져오기
+  const { data: dailyData, isLoading: loading, error } = useTeamMemberDaily(userId, dateStr)
+  
+  // API 응답에서 데이터 추출
+  const member = dailyData?.success ? (dailyData.data as any)?.member : null
+  const dailyStats = dailyData?.success ? (dailyData.data as any)?.daily_stats : null
+  const sessions = dailyData?.success ? (dailyData.data as any)?.sessions || [] : []
+  
+  // 파일 크기 포맷팅
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  // 특정 날짜의 세션 가져오기
-  const fetchDateSessions = async () => {
-    if (!userId || !dateStr) return
-
-    try {
-      setLoading(true)
-      
-      const { data: sessionsData, error } = await supabase
-        .from('project_sessions')
-        .select(`
-          *,
-          project:projects(*)
-        `)
-        .eq('user_id', userId)
-        .order('uploaded_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching sessions:', error)
-        return
-      }
-
-      // 날짜로 필터링 및 빈 세션 제외
-      const filteredSessions = (sessionsData || []).filter(session => {
-        // 데이터가 없는 세션 제외
-        if (!session.processed_lines || session.processed_lines === 0) {
-          return false
-        }
-        
-        const sessionDate = session.session_end_date || 
-                           session.session_start_date || 
-                           session.uploaded_at
-        return sessionDate.startsWith(dateStr)
-      })
-
-      // 각 세션의 첫 번째 사용자 메시지 가져오기
-      const sessionsWithFirstMessage = await Promise.all(
-        filteredSessions.map(async (session) => {
-          try {
-            // 첫 번째 사용자 메시지 찾기
-            const { data: lines, error } = await supabase
-              .from('session_lines')
-              .select('content, raw_text, message_type')
-              .eq('upload_id', session.id)
-              .order('line_number', { ascending: true })
-              .limit(20) // 처음 20줄에서 찾기
-            
-            let firstUserPrompt = ''
-            if (lines) {
-              for (const line of lines) {
-                const content = line.content || {}
-                if (content.type === 'user' && content.message?.content) {
-                  const msgContent = content.message.content
-                  if (typeof msgContent === 'string') {
-                    firstUserPrompt = msgContent.substring(0, 100)
-                    if (msgContent.length > 100) firstUserPrompt += '...'
-                    break
-                  } else if (Array.isArray(msgContent)) {
-                    const textItem = msgContent.find(item => item.type === 'text')
-                    if (textItem?.text) {
-                      firstUserPrompt = textItem.text.substring(0, 100)
-                      if (textItem.text.length > 100) firstUserPrompt += '...'
-                      break
-                    }
-                  }
-                }
-              }
-            }
-            
-            return {
-              ...session,
-              first_user_prompt: firstUserPrompt || session.session_name || session.file_name || `Session ${session.session_count || ''}`
-            }
-          } catch (error) {
-            console.error('Error fetching first message:', error)
-            return {
-              ...session,
-              first_user_prompt: session.session_name || session.file_name || `Session ${session.session_count || ''}`
-            }
-          }
-        })
-      )
-      
-      setSessions(sessionsWithFirstMessage)
-      
-      // 프로젝트 목록 추출
-      const projectMap = new Map<string, Project>()
-      sessionsWithFirstMessage.forEach(session => {
-        if (session.project) {
-          projectMap.set(session.project.id, session.project)
-        }
-      })
-      setProjects(Array.from(projectMap.values()))
-      
-      // 모든 프로젝트 기본 확장
-      setExpandedProjects(new Set(Array.from(projectMap.keys())))
-      
-      // 모든 세션의 라인 데이터 가져오기
-      await fetchAllSessionLines(sessionsWithFirstMessage)
-      
-      // 첫 번째 세션 자동 선택
-      if (sessionsWithFirstMessage.length > 0) {
-        selectSession(sessionsWithFirstMessage[0].id)
-      }
-      
-    } catch (error) {
-      console.error('Error in fetchDateSessions:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 모든 세션의 라인 데이터 가져오기
-  const fetchAllSessionLines = async (sessions: ProjectSession[]) => {
-    try {
-      const allLinesPromises = sessions.map(async (session) => {
-        const { data, error } = await supabase
-          .from('session_lines')
-          .select('*')
-          .eq('upload_id', session.id)
-          .order('line_number', { ascending: true })
-        
-        if (error) {
-          console.error(`Error fetching lines for session ${session.id}:`, error)
-          return []
-        }
-        
-        return (data || []).map(line => ({
-          ...line,
-          upload_id: session.id
-        }))
-      })
-      
-      const allLinesArrays = await Promise.all(allLinesPromises)
-      const allLines = allLinesArrays.flat()
-      setAllSessionLines(allLines)
-    } catch (error) {
-      console.error('Error fetching all session lines:', error)
-    }
-  }
-
-  // 프로젝트 확장/축소 토글
-  const toggleProjectExpand = (projectId: string) => {
-    const newExpanded = new Set(expandedProjects)
-    if (newExpanded.has(projectId)) {
-      newExpanded.delete(projectId)
-    } else {
-      newExpanded.add(projectId)
-    }
-    setExpandedProjects(newExpanded)
-  }
-
-  // 세션 선택 및 라인 데이터 가져오기
+  // 세션 선택 핸들러 - 실제 API 연동
   const selectSession = async (sessionId: string) => {
     setSelectedSessionId(sessionId)
     setLinesLoading(true)
     
     try {
-      const { data, error } = await supabase
-        .from('session_lines')
-        .select('*')
-        .eq('upload_id', sessionId)
-        .order('line_number', { ascending: true })
+      // 선택된 세션의 인덱스를 찾아서 해당 세션의 session_content.message 사용
+      const selectedSessionIndex = sessions.findIndex((s: any) => s.id === sessionId)
       
-      if (error) {
-        console.error('Error fetching session lines:', error)
-        return
+      if (selectedSessionIndex !== -1) {
+        // dailyData에서 해당 세션의 session_content.message 가져오기
+        const sessionData = (dailyData?.data as any)?.sessions[selectedSessionIndex]
+        
+        if (sessionData?.session_content?.messages) {
+          // session_content.messages를 SessionViewer가 이해할 수 있는 형태로 변환
+          const convertedLines = sessionData.session_content.messages.map((message: any, index: number) => ({
+            id: index + 1,
+            line_number: index + 1,
+            content: {
+              type: message.type,
+              message: {
+                content: message.content
+              },
+              timestamp: message.timestamp,
+              uuid: message.uuid,
+              sequence: message.sequence
+            },
+            raw_text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+            message_type: message.type,
+            message_timestamp: message.timestamp
+          }))
+          
+          setSessionLines(convertedLines)
+        } else {
+          console.error('No session_content.messages found for session:', sessionId)
+          setSessionLines([])
+        }
+      } else {
+        console.error('Session not found:', sessionId)
+        setSessionLines([])
       }
-      
-      setSessionLines(data || [])
     } catch (error) {
       console.error('Error in selectSession:', error)
+      setSessionLines([])
     } finally {
       setLinesLoading(false)
     }
   }
 
-  // 리사이즈 핸들러
+  // 리사이즈 핸들러들
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     setIsResizing(true)
@@ -299,11 +173,9 @@ export default function TeamDateDetailPage() {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isResizing) return
-    
-    // requestAnimationFrame으로 부드럽게 처리
     requestAnimationFrame(() => {
-      const newWidth = window.innerWidth - e.clientX - 10 // 10px 오프셋으로 더 자연스럽게
-      setRightPanelWidth(Math.min(Math.max(280, newWidth), 600)) // 최소 280px, 최대 600px
+      const newWidth = window.innerWidth - e.clientX - 10
+      setRightPanelWidth(Math.min(Math.max(280, newWidth), 600))
     })
   }
 
@@ -322,20 +194,27 @@ export default function TeamDateDetailPage() {
     }
   }, [isResizing])
 
-  useEffect(() => {
-    fetchMemberInfo()
-    fetchDateSessions()
-  }, [userId, dateStr])
-
   // 프로젝트별 세션 그룹화
-  const sessionsByProject = sessions.reduce((acc, session) => {
-    const projectId = session.project?.id || 'no-project'
+  const sessionsByProject = sessions.reduce((acc: any, session: any) => {
+    const projectId = session.project_name || session.project || 'no-project'
     if (!acc[projectId]) {
       acc[projectId] = []
     }
     acc[projectId].push(session)
     return acc
-  }, {} as Record<string, ProjectSession[]>)
+  }, {} as any)
+
+  // 자동으로 모든 프로젝트 확장하고 첫 번째 세션 선택
+  useEffect(() => {
+    if (sessions.length > 0) {
+      const projectIds = Object.keys(sessionsByProject)
+      setExpandedProjects(new Set(projectIds))
+      
+      if (sessions[0]) {
+        selectSession(sessions[0].id)
+      }
+    }
+  }, [sessions])
 
   // 날짜 포맷팅
   const formatDateTitle = () => {
@@ -345,10 +224,19 @@ export default function TeamDateDetailPage() {
     return format(targetDate, 'EEEE, MMMM dd, yyyy', { locale: enUS })
   }
 
+  // 프로젝트 확장/축소 토글
+  const toggleProjectExpand = (projectId: string) => {
+    const newExpanded = new Set(expandedProjects)
+    if (newExpanded.has(projectId)) {
+      newExpanded.delete(projectId)
+    } else {
+      newExpanded.add(projectId)
+    }
+    setExpandedProjects(newExpanded)
+  }
+
   // 통계 정보
-  const totalSessions = sessions.length
-  const totalLines = sessions.reduce((sum, s) => sum + (s.processed_lines || 0), 0)
-  const selectedSession = sessions.find(s => s.id === selectedSessionId)
+  const selectedSession = sessions.find((s: any) => s.id === selectedSessionId)
 
   if (loading || !member) {
     return (
@@ -382,7 +270,7 @@ export default function TeamDateDetailPage() {
                 className="mb-2 -ml-2"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                {member.display_name || member.email.split('@')[0]}
+                {member.full_name || member.username || 'Unknown'}
               </Button>
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-primary" />
@@ -391,11 +279,11 @@ export default function TeamDateDetailPage() {
               <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <FileText className="h-3 w-3" />
-                  {totalSessions} {locale === 'ko' ? '세션' : 'sessions'}
+                  {dailyStats?.overview?.total_sessions || 0} {locale === 'ko' ? '세션' : 'sessions'}
                 </span>
                 <span className="flex items-center gap-1">
                   <Database className="h-3 w-3" />
-                  {totalLines.toLocaleString()} {locale === 'ko' ? '라인' : 'lines'}
+                  {dailyStats?.overview ? formatFileSize(dailyStats.overview.total_size) : '0 B'}
                 </span>
               </div>
             </div>
@@ -410,9 +298,11 @@ export default function TeamDateDetailPage() {
             {/* 프로젝트별 세션 목록 */}
             <ScrollArea className="h-[calc(100%-150px)]">
               <div className="p-2 space-y-4">
-                {Object.entries(sessionsByProject).map(([projectId, projectSessions]) => {
-                  const project = projects.find(p => p.id === projectId)
+                {Object.entries(sessionsByProject).map(([projectId, projectSessions]: [string, any]) => {
                   const isExpanded = expandedProjects.has(projectId)
+                  const projectName = projectId === 'no-project' 
+                    ? (locale === 'ko' ? '프로젝트 없음' : 'No Project')
+                    : projectId
                   
                   return (
                     <div key={projectId}>
@@ -428,29 +318,79 @@ export default function TeamDateDetailPage() {
                         )}
                         <Folder className="h-4 w-4" />
                         <span className="font-medium text-sm flex-1">
-                          {project?.name || 'No Project'}
+                          {projectName}
                         </span>
                         <Badge variant="secondary" className="text-xs">
                           {projectSessions.length}
                         </Badge>
                       </div>
 
-                      {/* 세션 목록 - 통합 컴포넌트 사용 */}
+                      {/* 세션 목록 */}
                       {isExpanded && (
-                        <div className="ml-2">
-                          <SessionList
-                            sessions={projectSessions.map(session => ({
-                              ...session,
-                              profiles: {
-                                email: member?.email || '',
-                                display_name: member?.display_name,
-                                avatar_url: member?.avatar_url
+                        <div className="ml-2 space-y-1">
+                          {projectSessions.map((session: any, index: number) => {
+                            // dailyData에서 해당 세션의 인덱스 찾기
+                            const sessionIndex = sessions.findIndex((s: any) => s.id === session.id)
+                            const sessionData = (dailyData?.data as any)?.sessions[sessionIndex]
+                            
+                            // 첫 번째 사용자 메시지 찾기 (새로운 API 구조)
+                            let firstUserMessage = ''
+                            if (session.session_content?.messages) {
+                              const userMessage = session.session_content.messages.find((msg: any) => msg.type === 'user')
+                              if (userMessage?.content) {
+                                const content = typeof userMessage.content === 'string' 
+                                  ? userMessage.content 
+                                  : JSON.stringify(userMessage.content)
+                                firstUserMessage = content.length > 60 
+                                  ? content.substring(0, 60) + '...' 
+                                  : content
                               }
-                            }))}
-                            selectedSessionId={selectedSessionId || undefined}
-                            onSessionSelect={(session) => selectSession(session.id)}
-                            locale={locale}
-                          />
+                            }
+                            
+                            return (
+                              <div
+                                key={`${projectId}-${session.id}-${index}`}
+                                className={`
+                                  p-3 rounded-lg border cursor-pointer transition-colors
+                                  ${selectedSessionId === session.id 
+                                    ? 'bg-primary/10 border-primary' 
+                                    : 'hover:bg-muted/50'
+                                  }
+                                `}
+                                onClick={() => selectSession(session.id)}
+                              >
+                                <div className="space-y-2">
+                                  <p className="font-medium text-sm">{session.project_name || 'Session'}</p>
+                                  
+                                  {/* 첫 번째 사용자 메시지 미리보기 */}
+                                  {firstUserMessage && (
+                                    <p className="text-xs text-muted-foreground italic bg-muted/30 p-2 rounded">
+                                      "{firstUserMessage}"
+                                    </p>
+                                  )}
+                                  
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {session.start_time} - {session.end_time}
+                                    </span>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <Badge variant="secondary" className="text-xs">
+                                      {session.total_messages || 0} messages
+                                    </Badge>
+                                    <Badge variant="outline" className="text-xs">
+                                      {session.total_tokens || 0} tokens
+                                    </Badge>
+                                    <Badge variant="outline" className="text-xs">
+                                      {session.prompt_count || 0} prompts
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -470,23 +410,24 @@ export default function TeamDateDetailPage() {
                     <div>
                       <h1 className="text-xl font-semibold flex items-center gap-2">
                         <Code className="h-5 w-5" />
-                        {selectedSession.session_name || selectedSession.file_name}
+                        {selectedSession.filename}
                       </h1>
                       <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                        {selectedSession.project && (
-                          <span className="flex items-center gap-1">
-                            <Folder className="h-3 w-3" />
-                            {selectedSession.project.name}
-                          </span>
-                        )}
+                        <span className="flex items-center gap-1">
+                          <Folder className="h-3 w-3" />
+                          {selectedSession.project_name || selectedSession.project}
+                        </span>
                         <span className="flex items-center gap-1">
                           <Database className="h-3 w-3" />
-                          {selectedSession.processed_lines?.toLocaleString()} {locale === 'ko' ? '라인' : 'lines'}
+                          {formatFileSize(selectedSession.file_size)}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {format(new Date(selectedSession.uploaded_at), 'HH:mm')}
+                          {selectedSession.upload_time}
                         </span>
+                        <Badge variant={selectedSession.upload_status === 'processed' ? 'default' : 'secondary'}>
+                          {selectedSession.upload_status}
+                        </Badge>
                       </div>
                     </div>
                   </div>
@@ -497,14 +438,14 @@ export default function TeamDateDetailPage() {
                   <SessionViewer
                     lines={sessionLines}
                     loading={linesLoading}
-                    sessionTitle={undefined} // 제목 중복 방지
+                    sessionTitle={undefined}
                     sessionInfo={{
-                      user: undefined, // 이미 사이드바에 표시됨
-                      uploadTime: selectedSession.uploaded_at,
-                      processedLines: selectedSession.processed_lines
+                      user: undefined,
+                      uploadTime: selectedSession.upload_time,
+                      processedLines: selectedSession.file_size
                     }}
                     locale={locale}
-                    showFilter={true} // 필터 항상 표시
+                    showFilter={true}
                   />
                 </div>
               </>
@@ -551,7 +492,7 @@ export default function TeamDateDetailPage() {
               date={dateStr}
               locale={locale}
               sessions={sessions}
-              sessionLines={allSessionLines as any}
+              sessionLines={sessionLines as any}
             />
           </div>
         </div>

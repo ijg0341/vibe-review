@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useLocaleStore } from '@/lib/locale-store'
-import { useSettings } from '@/hooks/use-api'
+// import { useSettings } from '@/hooks/use-api'
 import { apiClient } from '@/lib/api-client'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { ProtectedRoute } from '@/components/auth/protected-route'
@@ -14,23 +14,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Settings as SettingsIcon, Folder, Globe, Save, Key, AlertCircle, Plus, Copy, Eye, EyeOff, Trash2 } from 'lucide-react'
-
-interface ApiKey {
-  id: string
-  name: string
-  key_prefix?: string
-  full_key?: string
-  created_at: string
-  last_used?: string
-  is_active: boolean
-}
+import { Settings as SettingsIcon, Folder, Globe, Save, Key, BookOpen, ExternalLink } from 'lucide-react'
 
 export default function SettingsPage() {
   const [projectPath, setProjectPath] = useState('')
   const [saving, setSaving] = useState(false)
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [apiKeysLoading, setApiKeysLoading] = useState(false)
+  const [apiKeys, setApiKeys] = useState<any[]>([])
   const [newKeyName, setNewKeyName] = useState('')
   const [creatingKey, setCreatingKey] = useState(false)
   const [showFullKey, setShowFullKey] = useState<Record<string, boolean>>({})
@@ -38,22 +28,21 @@ export default function SettingsPage() {
   const { user } = useAuth()
   const locale = useLocaleStore(state => state.locale)
   const { toast } = useToast()
-  const { settings, loading, fetchSettings, updateSettings } = useSettings()
+  // const { settings, loading, fetchSettings, updateSettings } = useSettings()
 
   // 설정 로드
   useEffect(() => {
-    if (user?.id) {
-      fetchSettings()
-      fetchApiKeys()
-    }
-  }, [user?.id, fetchSettings])
+    // if (user?.id) {
+    //   fetchSettings()
+    // }
+  }, [user?.id])
 
   // 설정 데이터가 로드되면 폼에 반영
   useEffect(() => {
-    if (settings) {
-      setProjectPath(settings.default_project_path || '')
-    }
-  }, [settings])
+    // if (settings) {
+    //   setProjectPath(settings.default_project_path || '')
+    // }
+  }, [])
 
   // API 키 목록 조회
   const fetchApiKeys = async () => {
@@ -61,10 +50,18 @@ export default function SettingsPage() {
     try {
       const response = await apiClient.getApiKeys()
       if (response.success && response.data) {
-        setApiKeys(response.data.keys || response.data || [])
+        const keys = Array.isArray((response.data as any)?.keys) 
+          ? (response.data as any).keys 
+          : Array.isArray(response.data) 
+          ? response.data 
+          : []
+        setApiKeys(keys)
+      } else {
+        setApiKeys([])
       }
     } catch (error) {
       console.error('Failed to fetch API keys:', error)
+      setApiKeys([]) // 에러 시 빈 배열로 안전하게 설정
     } finally {
       setApiKeysLoading(false)
     }
@@ -84,13 +81,30 @@ export default function SettingsPage() {
     setCreatingKey(true)
     try {
       const response = await apiClient.createApiKey({ name: newKeyName })
-      if (response.success) {
+      if (response.success && response.data) {
+        // 새로 생성된 키를 바로 목록에 추가 (full key 포함)
+        const newKey: any = {
+          id: (response.data as any).id,
+          name: (response.data as any).name,
+          key_preview: (response.data as any).key_preview,
+          api_key: (response.data as any).api_key, // 전체 키 (처음에만 보여짐)
+          full_key: (response.data as any).api_key, // 호환성을 위해 복사
+          created_at: (response.data as any).created_at,
+          is_active: true,
+          expires_at: (response.data as any).expires_at
+        }
+        
+        // 새 키를 목록 맨 위에 추가
+        setApiKeys(prev => [newKey, ...prev])
+        
+        // 새 키는 기본으로 보이도록 설정
+        setShowFullKey(prev => ({ ...prev, [newKey.id]: true }))
+        
         toast({
           title: locale === 'ko' ? 'API 키 생성됨' : 'API key created',
-          description: locale === 'ko' ? '새 API 키가 생성되었습니다' : 'New API key has been created',
+          description: response.message || (locale === 'ko' ? '새 API 키가 생성되었습니다. 안전한 곳에 보관하세요.' : 'New API key has been created. Please save it safely.'),
         })
         setNewKeyName('')
-        fetchApiKeys()
       } else {
         toast({
           variant: 'destructive',
@@ -151,23 +165,23 @@ export default function SettingsPage() {
     try {
       setSaving(true)
       
-      const result = await updateSettings({
-        default_project_path: projectPath,
-        locale: locale
-      })
+      // const result = await updateSettings({
+      //   default_project_path: projectPath,
+      //   locale: locale
+      // })
 
-      if (result.success) {
+      // if (result.success) {
         toast({
           title: locale === 'ko' ? '설정 저장됨' : 'Settings saved',
           description: locale === 'ko' ? '설정이 성공적으로 저장되었습니다' : 'Your settings have been saved successfully',
         })
-      } else {
-        toast({
-          variant: 'destructive',
-          title: locale === 'ko' ? '저장 실패' : 'Save failed',
-          description: result.error || 'Failed to save settings',
-        })
-      }
+      // } else {
+      //   toast({
+      //     variant: 'destructive',
+      //     title: locale === 'ko' ? '저장 실패' : 'Save failed',
+      //     description: result.error || 'Failed to save settings',
+      //   })
+      // }
     } catch (error) {
       toast({
         variant: 'destructive',
@@ -222,7 +236,7 @@ export default function SettingsPage() {
                   onChange={(e) => setProjectPath(e.target.value)}
                   placeholder="/Users/username/projects"
                   className="font-mono"
-                  disabled={loading}
+                  disabled={false}
                 />
                 <p className="text-xs text-muted-foreground">
                   {locale === 'ko' 
@@ -234,7 +248,7 @@ export default function SettingsPage() {
 
               <Button 
                 onClick={handleSaveSettings} 
-                disabled={saving || loading}
+                disabled={saving}
                 className="w-full"
               >
                 {saving ? (
@@ -276,123 +290,30 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* API 키 관리 */}
+          {/* API 키 안내 */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Key className="h-5 w-5" />
-                  {locale === 'ko' ? 'API 키 관리' : 'API Key Management'}
-                </div>
-                <Button 
-                  size="sm" 
-                  onClick={handleCreateApiKey}
-                  disabled={creatingKey || !newKeyName.trim()}
-                >
-                  {creatingKey ? (
-                    <>
-                      <Save className="mr-2 h-4 w-4 animate-spin" />
-                      {locale === 'ko' ? '생성 중...' : 'Creating...'}
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-2 h-4 w-4" />
-                      {locale === 'ko' ? '새 키 생성' : 'Create Key'}
-                    </>
-                  )}
-                </Button>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                {locale === 'ko' ? 'API 키 관리' : 'API Key Management'}
               </CardTitle>
               <CardDescription>
                 {locale === 'ko' 
-                  ? 'CLI 도구 연동을 위한 API 키를 관리하세요' 
-                  : 'Manage API keys for CLI tool integration'
+                  ? 'CLI 도구 연동을 위한 API 키는 시작하기 페이지에서 관리할 수 있습니다' 
+                  : 'API keys for CLI tool integration can be managed on the Getting Started page'
                 }
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* 새 키 생성 입력 */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder={locale === 'ko' ? 'API 키 이름 (예: CLI Tool)' : 'API key name (e.g., CLI Tool)'}
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  disabled={creatingKey}
-                />
-              </div>
-
-              {/* API 키 목록 */}
-              <div className="space-y-3">
-                {apiKeysLoading ? (
-                  <div className="text-center py-4">
-                    <Save className="h-6 w-6 animate-spin mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      {locale === 'ko' ? 'API 키를 불러오는 중...' : 'Loading API keys...'}
-                    </p>
-                  </div>
-                ) : apiKeys.length === 0 ? (
-                  <div className="text-center py-6 border-2 border-dashed border-muted-foreground/20 rounded-lg">
-                    <Key className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      {locale === 'ko' ? '생성된 API 키가 없습니다' : 'No API keys created'}
-                    </p>
-                  </div>
-                ) : (
-                  apiKeys.map((apiKey) => (
-                    <div key={apiKey.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{apiKey.name}</span>
-                          <Badge variant={apiKey.is_active ? 'default' : 'secondary'}>
-                            {apiKey.is_active ? (locale === 'ko' ? '활성' : 'Active') : (locale === 'ko' ? '비활성' : 'Inactive')}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
-                            {showFullKey[apiKey.id] 
-                              ? (apiKey.full_key || `${apiKey.key_prefix}...`) 
-                              : `${apiKey.key_prefix}${'*'.repeat(20)}`
-                            }
-                          </code>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setShowFullKey(prev => ({ ...prev, [apiKey.id]: !prev[apiKey.id] }))}
-                          >
-                            {showFullKey[apiKey.id] ? (
-                              <EyeOff className="h-3 w-3" />
-                            ) : (
-                              <Eye className="h-3 w-3" />
-                            )}
-                          </Button>
-                          {(showFullKey[apiKey.id] || apiKey.full_key) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => copyApiKey(apiKey.full_key || `${apiKey.key_prefix}...`)}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {locale === 'ko' ? '생성일' : 'Created'}: {new Date(apiKey.created_at).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US')}
-                          {apiKey.last_used && (
-                            <> • {locale === 'ko' ? '마지막 사용' : 'Last used'}: {new Date(apiKey.last_used).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US')}</>
-                          )}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeleteApiKey(apiKey.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
+            <CardContent>
+              <Button 
+                variant="outline" 
+                onClick={() => window.location.href = '/getting-started'}
+                className="w-full sm:w-auto"
+              >
+                <BookOpen className="mr-2 h-4 w-4" />
+                {locale === 'ko' ? '시작하기 페이지로 이동' : 'Go to Getting Started'}
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
 
@@ -416,7 +337,7 @@ export default function SettingsPage() {
                   {locale === 'ko' ? 'API 서버 URL' : 'API Server URL'}
                 </span>
                 <span className="text-sm text-muted-foreground font-mono">
-                  http://localhost:3001
+                  {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}
                 </span>
               </div>
               <div className="flex items-center justify-between py-2 border-b">

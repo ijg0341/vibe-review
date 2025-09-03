@@ -19,18 +19,18 @@ interface AISummaryPanelProps {
   locale?: 'ko' | 'en'
   sessions?: Array<{
     id: string
-    project?: { name: string }
-    first_user_prompt?: string
-    uploaded_at: string
-    session_start_date?: string
-    session_end_date?: string
+    filename: string
+    project: string
+    project_name?: string
+    session_content?: {
+      messages: Array<{
+        type: 'user' | 'assistant'
+        content: string | any
+        timestamp?: string
+      }>
+    }
   }>
-  sessionLines?: Array<{
-    id: number
-    upload_id: string
-    content: any
-    message_type?: string
-  }>
+  sessionLines?: any // 새로운 구조에서는 필요 없음
 }
 
 export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({ 
@@ -50,43 +50,13 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       setLoading(true)
       setError(null)
       
-      // 프로젝트별로 사용자 메시지 텍스트 정제
-      const projectTexts = sessions.map(session => {
-        // 해당 세션의 해당 날짜 사용자 메시지만 필터링
-        const userTexts = sessionLines
-          .filter(line => {
-            const messageDate = (line as any).message_timestamp
-            return line.upload_id === session.id && 
-                   messageDate && 
-                   messageDate.startsWith(date) &&
-                   line.content?.type === 'user' &&
-                   line.content?.message?.content
-          })
-          .map(line => {
-            const msgContent = line.content.message.content
-            if (typeof msgContent === 'string') {
-              return msgContent.trim()
-            } else if (Array.isArray(msgContent)) {
-              const textItem = msgContent.find(item => item.type === 'text')
-              return textItem?.text?.trim() || ''
-            }
-            return ''
-          })
-          .filter(text => text.length > 10) // 너무 짧은 메시지 제외
-          .join('\n\n') // 텍스트들을 하나로 병합
-
-        return {
-          projectName: session.project?.name || 'Unknown Project',
-          userText: userTexts
-        }
-      }).filter(project => project.userText.length > 0)
-
-      const response = await fetch('/api/generate-summary', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('vibereview_token')}`,
         },
-        body: JSON.stringify({ userId, date, projectTexts, forceRegenerate }),
+        body: JSON.stringify({ userId, date, forceRegenerate }),
       })
 
       if (!response.ok) {
@@ -94,8 +64,8 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       }
 
       const data = await response.json()
-      setSummary(data.summary)
-      setIsCached(data.cached || false)
+      setSummary(data.data?.summary || data.summary)
+      setIsCached(data.data?.cached || data.cached || false)
     } catch (err) {
       console.error('Error generating summary:', err)
       setError(locale === 'ko' ? '요약 생성에 실패했습니다.' : 'Failed to generate summary')
@@ -104,12 +74,15 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
     }
   }
 
+  const [hasInitialized, setHasInitialized] = useState(false)
+  
   useEffect(() => {
-    // 컴포넌트 마운트 시 자동으로 요약 생성 (캐시 우선 사용)
-    if (userId && date && sessions.length > 0) {
-      generateSummary(false) // 처음엔 캐시 데이터 사용
+    if (userId && date && !hasInitialized && !loading && !summary) {
+      console.log('AISummaryPanel: Initializing summary for', userId, date)
+      setHasInitialized(true)
+      generateSummary(false)
     }
-  }, [userId, date, sessions])
+  }, [userId, date])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
@@ -130,22 +103,19 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       .replace(/^### (.*$)/gim, '<h3 class="text-base font-semibold text-foreground mb-1 mt-2">$1</h3>')
       .replace(/^## (.*$)/gim, '<h2 class="text-lg font-bold text-foreground mb-2 mt-3 flex items-center gap-2">$1</h2>')
       
-      // 체크박스 리스트 (TODO)
-      .replace(/^- \[ \] (.*$)/gim, '<div class="flex items-start gap-2 mb-0.5 text-sm"><input type="checkbox" class="mt-0.5 rounded border-muted-foreground/50" disabled /><span class="text-foreground">$1</span></div>')
-      .replace(/^- \[x\] (.*$)/gim, '<div class="flex items-start gap-2 mb-0.5 text-sm"><input type="checkbox" class="mt-0.5 rounded border-muted-foreground/50" checked disabled /><span class="text-foreground text-muted-foreground">$1</span></div>')
+      // 체크박스 리스트 (완료된 작업)
+      .replace(/^- \[x\] (.*$)/gim, '<div class="flex items-start gap-2 mb-1 text-sm"><input type="checkbox" class="mt-0.5 rounded border-muted-foreground/50" checked disabled /><span class="text-foreground">$1</span></div>')
+      .replace(/^- \[ \] (.*$)/gim, '<div class="flex items-start gap-2 mb-1 text-sm"><input type="checkbox" class="mt-0.5 rounded border-muted-foreground/50" disabled /><span class="text-foreground">$1</span></div>')
       
       // 볼드 텍스트 (프로젝트 이름)
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-base text-foreground inline-block mt-3">$1</strong>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-base text-foreground inline-block mt-3 mb-1">$1</strong>')
       
       // 일반 리스트
-      .replace(/^- ((?!\[).*$)/gim, '<div class="flex items-start gap-2 mb-0.5 text-sm"><span class="text-muted-foreground mt-0.5">•</span><span class="text-foreground">$1</span></div>')
+      .replace(/^- ((?!\[).*$)/gim, '<div class="flex items-start gap-2 mb-1 text-sm"><span class="text-muted-foreground mt-0.5">•</span><span class="text-foreground">$1</span></div>')
       
       // 줄바꿈 처리
-      .replace(/\n\n/g, '</div><div class="mb-1">')
+      .replace(/\n\n/g, '<br><br>')
       .replace(/\n/g, '<br>')
-      
-      // 전체를 div로 감싸기
-      .replace(/^(.*)$/, '<div class="mb-1">$1</div>')
   }
 
   return (

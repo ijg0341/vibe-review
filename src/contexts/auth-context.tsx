@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { apiClient, TokenManager } from '@/lib/api-client'
+import { apiClient, TokenManager, setGlobalSignOut } from '@/lib/api-client'
 
 // API 서버 기반 사용자 타입
 type User = {
@@ -42,6 +42,27 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const signOut = async () => {
+    try {
+      await apiClient.logout()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      setUser(null)
+      TokenManager.removeToken()
+      
+      // 로그인 페이지로 리다이렉트 (현재 페이지가 로그인 페이지가 아닌 경우에만)
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login'
+      }
+    }
+  }
+
+  // 전역 signOut 함수 등록
+  useEffect(() => {
+    setGlobalSignOut(signOut)
+  }, [])
 
   // 토큰 상태 변화 감지
   useEffect(() => {
@@ -138,17 +159,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const signOut = async () => {
-    try {
-      await apiClient.logout()
-    } catch (error) {
-      console.error('Logout error:', error)
-    } finally {
-      setUser(null)
-      TokenManager.removeToken()
-    }
-  }
-
   const refreshUser = async () => {
     const token = TokenManager.getToken()
     if (!token) return
@@ -156,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await apiClient.getSession()
       if (response.success && response.data) {
-        setUser(response.data.user)
+        setUser((response.data as any).user)
       }
     } catch (error) {
       console.error('Refresh user failed:', error)

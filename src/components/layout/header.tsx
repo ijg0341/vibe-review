@@ -33,8 +33,8 @@ export function Header() {
 
   // 유저 이름 추출 (메타데이터 또는 이메일에서)
   const getUserName = () => {
-    if (user?.user_metadata?.full_name) {
-      return user.user_metadata.full_name
+    if ((user as any)?.user_metadata?.full_name) {
+      return (user as any).user_metadata.full_name
     }
     if (user?.email) {
       return user.email.split('@')[0]
@@ -75,7 +75,7 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-9 w-9 rounded-full">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={user?.user_metadata?.avatar_url} alt={getUserName()} />
+                <AvatarImage src={(user as any)?.user_metadata?.avatar_url} alt={getUserName()} />
                 <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
               </Avatar>
             </Button>

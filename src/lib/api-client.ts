@@ -1,7 +1,7 @@
 // API 서버 전용 클라이언트 - Supabase 의존성 완전 제거
 // Next.js rewrites를 통한 API 프록시
 
-const API_BASE_URL = '' // Next.js rewrites 사용으로 baseURL 불필요
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '' // 환경변수 사용, rewrites가 있으면 빈 문자열
 
 interface ApiResponse<T = any> {
   success: boolean
@@ -91,17 +91,21 @@ class ApiClient {
       console.log('Using token for', endpoint, ':', token ? token.substring(0, 20) + '...' : 'NO TOKEN')
       
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
         ...options.headers,
       }
 
+      // body가 있는 요청에만 Content-Type 설정
+      if (options.body || options.method === 'POST' || options.method === 'PUT') {
+        (headers as any)['Content-Type'] = 'application/json'
+      }
+
       if (token) {
-        headers.Authorization = `Bearer ${token}`
+        (headers as any).Authorization = `Bearer ${token}`
       } else {
         console.warn('No token available for API request:', endpoint)
       }
 
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const response = await fetch(endpoint, {
         ...options,
         headers,
       })
@@ -114,6 +118,32 @@ class ApiClient {
         } catch {
           errorData = { error: errorText.includes('<') ? 'Server returned HTML instead of JSON' : errorText }
         }
+
+        // 401 Unauthorized 에러 시 자동 로그아웃 처리
+        if (response.status === 401) {
+          console.warn('Authentication failed, logging out user')
+          
+          // 전역 signOut 함수가 등록되어 있으면 사용
+          if (globalSignOut) {
+            try {
+              await globalSignOut()
+            } catch (error) {
+              console.error('Error during automatic logout:', error)
+              // fallback: 직접 토큰 제거 및 리다이렉트
+              TokenManager.removeToken()
+              if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+                window.location.href = '/login'
+              }
+            }
+          } else {
+            // fallback: 직접 토큰 제거 및 리다이렉트
+            TokenManager.removeToken()
+            if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+              window.location.href = '/login'
+            }
+          }
+        }
+        
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`)
       }
 
@@ -139,16 +169,20 @@ class ApiClient {
 
   // GET 요청
   private async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
-    const url = new URL(`${this.baseURL}${endpoint}`)
+    let url = endpoint
     if (params) {
+      const searchParams = new URLSearchParams()
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          url.searchParams.append(key, String(value))
+          searchParams.append(key, String(value))
         }
       })
+      if (searchParams.toString()) {
+        url += '?' + searchParams.toString()
+      }
     }
     
-    return this.fetch<T>(url.pathname + url.search)
+    return this.fetch<T>(url)
   }
 
   // POST 요청
@@ -268,10 +302,10 @@ class ApiClient {
       const token = TokenManager.getToken()
       const headers: HeadersInit = {}
       if (token) {
-        headers.Authorization = `Bearer ${token}`
+        (headers as any).Authorization = `Bearer ${token}`
       }
 
-      const response = await fetch(`${this.baseURL}/api/upload/file`, {
+      const response = await fetch('/api/upload/file', {
         method: 'POST',
         headers,
         body: formData,
@@ -303,10 +337,10 @@ class ApiClient {
       const token = TokenManager.getToken()
       const headers: HeadersInit = {}
       if (token) {
-        headers.Authorization = `Bearer ${token}`
+        (headers as any).Authorization = `Bearer ${token}`
       }
 
-      const response = await fetch(`${this.baseURL}/api/upload/batch`, {
+      const response = await fetch('/api/upload/batch', {
         method: 'POST',
         headers,
         body: formData,
@@ -356,19 +390,16 @@ class ApiClient {
     return this.delete(`/api/metadata/files/${fileId}`)
   }
 
-  async getTeamStats() {
-    return this.get('/api/metadata/stats')
-  }
 
   async downloadFile(fileId: string) {
     try {
       const token = TokenManager.getToken()
       const headers: HeadersInit = {}
       if (token) {
-        headers.Authorization = `Bearer ${token}`
+        (headers as any).Authorization = `Bearer ${token}`
       }
 
-      const response = await fetch(`${this.baseURL}/api/metadata/files/${fileId}/download`, {
+      const response = await fetch(`/api/metadata/files/${fileId}/download`, {
         headers,
       })
 
@@ -418,6 +449,45 @@ class ApiClient {
   async verifyApiKey(key: string) {
     return this.post('/api/api-keys/verify', { key })
   }
+
+  // ====== 팀 관련 API ======
+  
+  async getTeamMembers() {
+    return this.get('/api/teams/current/members')
+  }
+
+  async getTeamMember(userId: string) {
+    return this.get(`/api/teams/current/members/${userId}`)
+  }
+
+  async getTeamMemberDaily(userId: string, date: string) {
+    return this.get(`/api/teams/current/members/${userId}/daily/${date}`)
+  }
+
+  async getTeamStats() {
+    return this.get('/api/stats/team')
+  }
+  
+  async getTeamFiles(filters: PaginationParams = {}) {
+    return this.get('/api/team/files', filters)
+  }
+
+  async getTeamProjects(filters: PaginationParams = {}) {
+    return this.get('/api/team/projects', filters)
+  }
+
+  // ====== 세션 상세 API ======
+  
+  async getSessionContent(sessionId: string) {
+    return this.get(`/api/sessions/${sessionId}/content`)
+  }
+}
+
+// 전역 로그아웃 핸들러
+let globalSignOut: (() => Promise<void>) | null = null
+
+export const setGlobalSignOut = (signOutFn: () => Promise<void>) => {
+  globalSignOut = signOutFn
 }
 
 // 싱글톤 인스턴스 생성
