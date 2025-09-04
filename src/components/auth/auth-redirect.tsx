@@ -12,7 +12,7 @@ interface AuthRedirectProps {
 
 export function AuthRedirect({ 
   children, 
-  redirectPath = '/' 
+  redirectPath = '/dashboard' 
 }: AuthRedirectProps) {
   const { user, loading } = useAuth()
   const router = useRouter()

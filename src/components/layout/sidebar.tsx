@@ -15,7 +15,8 @@ import {
   History,
   Users,
   Folder,
-  BookOpen
+  BookOpen,
+  BarChart3
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -43,6 +44,11 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
       label: locale === 'ko' ? '시작하기' : 'Getting Started',
       icon: BookOpen,
       href: "/getting-started",
+    },
+    {
+      label: locale === 'ko' ? '팀 대시보드' : 'Team Dashboard',
+      icon: BarChart3,
+      href: "/dashboard",
     },
     {
       label: t.sidebar.team,

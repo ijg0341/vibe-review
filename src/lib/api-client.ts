@@ -18,6 +18,64 @@ interface PaginationParams {
   order?: 'asc' | 'desc'
 }
 
+// 대시보드 관련 타입들
+export interface PersonalStats {
+  date: string
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  estimated_cost: number
+  prompt_count: number
+  message_chars: number
+  tool_breakdown: Array<{
+    tool_name: string
+    tokens: number
+    cost: number
+    model: string
+  }>
+}
+
+export interface TeamTotalStats {
+  date: string
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  estimated_cost: number
+  prompt_count: number
+  message_chars: number
+  session_count: number
+  active_members: number
+  tool_breakdown: Array<{
+    tool_name: string
+    tokens: number
+    cost: number
+    model: string
+  }>
+}
+
+export interface TeamRankingUser {
+  rank: number
+  user_id?: string
+  user_name: string
+  user_email: string
+  value: number
+  formatted_value: string
+  estimated_cost?: number
+}
+
+export interface TeamRankings {
+  date: string
+  token_ranking: TeamRankingUser[]
+  prompt_ranking: TeamRankingUser[]
+  message_ranking: TeamRankingUser[]
+  // AI 활용 능력 지표 랭킹들
+  cost_efficiency_ranking: TeamRankingUser[]   // 비용 효율성 (1달러당 토큰량)
+  prompt_quality_ranking: TeamRankingUser[]    // 프롬프트 품질 지수
+  overall_ai_score_ranking: TeamRankingUser[]  // 종합 AI 활용도 점수
+}
+
 // JWT 토큰 관리
 class TokenManager {
   private static TOKEN_KEY = 'vibereview_token'
@@ -480,6 +538,23 @@ class ApiClient {
   
   async getSessionContent(sessionId: string) {
     return this.get(`/api/sessions/${sessionId}/content`)
+  }
+
+  // ====== 대시보드 API ======
+  
+  async getPersonalStats(date?: string): Promise<ApiResponse<PersonalStats>> {
+    const params = date ? { date } : {}
+    return this.get('/api/stats/dashboard/personal-stats', params)
+  }
+
+  async getTeamTotalStats(date?: string): Promise<ApiResponse<TeamTotalStats>> {
+    const params = date ? { date } : {}
+    return this.get('/api/stats/dashboard/team-total-stats', params)
+  }
+
+  async getTeamRankings(date?: string): Promise<ApiResponse<TeamRankings>> {
+    const params = date ? { date } : {}
+    return this.get('/api/stats/dashboard/team-rankings', params)
   }
 }
 

@@ -40,7 +40,7 @@ export default function LoginPage() {
           title: locale === 'ko' ? '로그인 성공' : 'Login successful',
           description: locale === 'ko' ? '환영합니다!' : 'Welcome back!',
         })
-        router.push('/')
+        router.push('/dashboard')
         router.refresh()
       } else {
         toast({

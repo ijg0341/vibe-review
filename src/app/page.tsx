@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from 'next/navigation'
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,8 +24,14 @@ import { useLocaleStore } from "@/lib/locale-store"
 import { useTranslation } from "@/lib/translations"
 
 export default function DashboardPage() {
+  const router = useRouter()
   const locale = useLocaleStore(state => state.locale)
   const t = useTranslation(locale)
+
+  // 메인 페이지 접속 시 팀 대시보드로 자동 리다이렉트
+  useEffect(() => {
+    router.push('/dashboard')
+  }, [router])
   
   const myStats = [
     {
