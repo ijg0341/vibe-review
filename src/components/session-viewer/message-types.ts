@@ -92,6 +92,15 @@ export interface AssistantMessage extends BaseMessage {
 
 export type ClaudeMessage = UserMessage | AssistantMessage;
 
+// 정규화된 메시지 타입 (백엔드에서 처리된 데이터)
+export interface ProcessedMessage extends BaseMessage {
+  is_sidechain: boolean;
+  subagent_name?: string;
+  message_content?: any; // 정규화된 메시지 내용
+  token_count?: number;
+  tool_calls?: string[];
+}
+
 // Tool 정보
 export const TOOL_INFO: Record<string, { icon: string; label: string; color: string }> = {
   'Bash': { icon: '💻', label: 'Terminal', color: 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700' },
