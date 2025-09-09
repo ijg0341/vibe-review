@@ -177,6 +177,41 @@ export const SessionViewer: React.FC<SessionViewerProps> = ({
               {locale === 'ko' ? '사고' : 'Thinking'}
             </Button>
             
+            {/* 구분선 */}
+            <div className="h-4 w-px bg-border mx-2" />
+            
+            <Button
+              variant={messageTypeFilter.includes('main-only') ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setMessageTypeFilter(prev => 
+                  prev.includes('main-only') 
+                    ? prev.filter(t => t !== 'main-only')
+                    : [...prev.filter(t => t !== 'subagent-only'), 'main-only']
+                )
+              }}
+            >
+              <User className="h-3 w-3 mr-1" />
+              {locale === 'ko' ? '메인 대화만' : 'Main Only'}
+            </Button>
+            
+            <Button
+              variant={messageTypeFilter.includes('subagent-only') ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setMessageTypeFilter(prev => 
+                  prev.includes('subagent-only') 
+                    ? prev.filter(t => t !== 'subagent-only')
+                    : [...prev.filter(t => t !== 'main-only'), 'subagent-only']
+                )
+              }}
+            >
+              <Bot className="h-3 w-3 mr-1" />
+              {locale === 'ko' ? '서브에이전트만' : 'Subagents Only'}
+            </Button>
+            
             {messageTypeFilter.length > 0 && (
               <Button
                 variant="ghost"

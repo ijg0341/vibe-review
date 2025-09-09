@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
-import { AlertCircle, Filter, ChevronDown, ChevronUp } from 'lucide-react'
+import React, { useState } from 'react'
+import { AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { UserDirectTextMessage } from './UserDirectTextMessage'
 import { UserToolResultMessage } from './UserToolResultMessage'
 import { AssistantTextMessage } from './AssistantTextMessage'
@@ -19,8 +19,6 @@ interface SessionLine {
   metadata?: any
 }
 
-type ConversationFilter = 'all' | 'main-only' | 'subagent-only';
-type SubagentTypeFilter = 'all' | string;
 
 interface SessionViewerV2Props {
   lines: SessionLine[]
@@ -35,8 +33,6 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   locale = 'ko',
   messageTypeFilter = []
 }) => {
-  const [conversationFilter, setConversationFilter] = useState<ConversationFilter>('all')
-  const [subagentTypeFilter, setSubagentTypeFilter] = useState<SubagentTypeFilter>('all')
   const [collapsedSubagents, setCollapsedSubagents] = useState<Set<string>>(new Set())
   
   // Helper to detect subagent type - prioritize normalized data
@@ -130,47 +126,6 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
     return 'other'
   }
   
-  // Get unique subagent types for filter dropdown
-  const availableSubagentTypes = useMemo(() => {
-    const types = new Set<string>()
-    lines.forEach(line => {
-      try {
-        const data = line.content || JSON.parse(line.raw_text)
-        const subagentType = getSubagentType(data)
-        if (subagentType && subagentType !== 'unknown-subagent') {
-          types.add(subagentType)
-        }
-      } catch (e) {
-        // Skip invalid lines
-      }
-    })
-    return Array.from(types)
-  }, [lines])
-  
-  // Filter messages based on conversation and subagent type filters
-  const filteredLines = useMemo(() => {
-    return lines.filter(line => {
-      try {
-        const data = line.content || JSON.parse(line.raw_text)
-        const isSubagent = data.is_sidechain === true || data.isSidechain === true
-        const subagentType = getSubagentType(data)
-        
-        // Apply conversation filter
-        if (conversationFilter === 'main-only' && isSubagent) return false
-        if (conversationFilter === 'subagent-only' && !isSubagent) return false
-        
-        // Apply subagent type filter
-        if (subagentTypeFilter !== 'all' && isSubagent && subagentType !== subagentTypeFilter) {
-          return false
-        }
-        
-        return true
-      } catch (e) {
-        return true // Keep invalid lines
-      }
-    })
-  }, [lines, conversationFilter, subagentTypeFilter])
-  
   // Toggle collapse state for subagent groups
   const toggleSubagentCollapse = (subagentType: string) => {
     const newCollapsed = new Set(collapsedSubagents)
@@ -225,7 +180,19 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
       // Apply message type filter if provided
       if (messageTypeFilter.length > 0) {
         const messageType = getMessageType(data)
-        if (!messageTypeFilter.includes(messageType)) {
+        const isSubagent = data.is_sidechain === true || data.isSidechain === true
+        
+        // Handle subagent filtering
+        if (messageTypeFilter.includes('main-only') && isSubagent) {
+          return null
+        }
+        if (messageTypeFilter.includes('subagent-only') && !isSubagent) {
+          return null
+        }
+        
+        // Handle other message type filtering (exclude subagent filters)
+        const otherFilters = messageTypeFilter.filter(f => f !== 'main-only' && f !== 'subagent-only')
+        if (otherFilters.length > 0 && !otherFilters.includes(messageType)) {
           return null
         }
       }
@@ -325,67 +292,13 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
     )
   }
   
-  // Render filtering UI
-  const renderFilterControls = () => {
-    return (
-      <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">필터:</span>
-          </div>
-          
-          {/* Conversation Type Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">대화 유형:</span>
-            <select 
-              value={conversationFilter} 
-              onChange={(e) => setConversationFilter(e.target.value as ConversationFilter)}
-              className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            >
-              <option value="all">전체</option>
-              <option value="main-only">메인 대화만</option>
-              <option value="subagent-only">서브에이전트만</option>
-            </select>
-          </div>
-          
-          {/* Subagent Type Filter */}
-          {availableSubagentTypes.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 dark:text-gray-400">서브에이전트 타입:</span>
-              <select 
-                value={subagentTypeFilter} 
-                onChange={(e) => setSubagentTypeFilter(e.target.value as SubagentTypeFilter)}
-                className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                disabled={conversationFilter === 'main-only'}
-              >
-                <option value="all">전체</option>
-                {availableSubagentTypes.map(type => (
-                  <option key={type} value={type}>
-                    {getSubagentInfo(type).label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          
-          {/* Stats */}
-          <div className="ml-auto text-sm text-gray-500 dark:text-gray-400">
-            {filteredLines.length} / {lines.length} 메시지
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   if (viewMode === 'raw') {
     return renderRawView()
   }
   
   return (
     <div className="space-y-6 max-w-full overflow-hidden">
-      {renderFilterControls()}
-      {filteredLines.map(line => renderStructuredLine(line)).filter(Boolean)}
+      {lines.map(line => renderStructuredLine(line)).filter(Boolean)}
     </div>
   )
 }
