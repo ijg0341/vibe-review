@@ -102,7 +102,7 @@ const DEFAULT_TOOL = {
 
 interface SubagentInfo {
   type: string | null
-  name: string | undefined
+  name: string | null | undefined
 }
 
 interface AssistantToolUseMessageProps {

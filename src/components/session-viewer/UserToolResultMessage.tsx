@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 
 interface SubagentInfo {
   type: string | null
-  name: string | undefined
+  name: string | null | undefined
 }
 
 interface UserToolResultMessageProps {
@@ -58,8 +58,8 @@ export const UserToolResultMessage: React.FC<UserToolResultMessageProps> = ({
             UserToolResult
           </Badge>
           {subagentInfo && (
-            <Badge variant="outline" className="text-xs h-4 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300">
-              SubAgent ({subagentInfo.name})
+            <Badge variant="outline" className="text-xs h-4 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300">
+              {subagentInfo.name}
             </Badge>
           )}
         </div>

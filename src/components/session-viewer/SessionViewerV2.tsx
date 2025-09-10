@@ -34,8 +34,50 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   messageTypeFilter = []
 }) => {
   
+  // Helper to get subagent name directly from data
+  const getSubagentName = (message: any): string | null => {
+    // 디버깅을 위한 로그
+    console.log('getSubagentName - message structure:', {
+      content: message.content,
+      message_content: message.message_content,
+      top_level_subagent_name: message.subagent_name,
+      content_subagent_name: message.content?.subagent_name,
+      message_content_subagent_name: message.message_content?.subagent_name
+    });
+    
+    // content 레벨에서 우선 확인 (실제 데이터 구조)
+    if (message.content?.subagent_name) {
+      console.log('Found subagent_name in content:', message.content.subagent_name);
+      return message.content.subagent_name;
+    }
+    
+    // message_content 내부 확인
+    if (message.message_content?.subagent_name) {
+      console.log('Found subagent_name in message_content:', message.message_content.subagent_name);
+      return message.message_content.subagent_name;
+    }
+    
+    // 최상위 레벨에서 확인
+    if (message.subagent_name) {
+      console.log('Found subagent_name at top level:', message.subagent_name);
+      return message.subagent_name;
+    }
+    
+    console.log('No subagent_name found');
+    return null;
+  }
+
   // Helper to detect subagent type - prioritize normalized data
   const getSubagentType = (message: any): string | null => {
+    // content 레벨에서 우선 확인 (실제 데이터 구조)
+    if (message.content?.subagent_name) {
+      return message.content.subagent_name;
+    }
+    
+    if (message.content?.is_sidechain !== undefined) {
+      return message.content.is_sidechain ? 'unknown-subagent' : null;
+    }
+    
     // 정규화된 데이터 우선 사용 - message_content 내부 확인
     if (message.message_content?.subagent_name) {
       return message.message_content.subagent_name;
@@ -145,8 +187,9 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
         const messageType = getMessageType(data)
         const isSubagent = data.is_sidechain === true || data.isSidechain === true
         
-        // Handle subagent filtering - check message_content first
-        const isSubagentFiltered = data.message_content?.is_sidechain === true || 
+        // Handle subagent filtering - check content first
+        const isSubagentFiltered = data.content?.is_sidechain === true || 
+                                  data.message_content?.is_sidechain === true || 
                                   data.is_sidechain === true || 
                                   data.isSidechain === true
         
@@ -164,9 +207,11 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
         }
       }
       
-      // Check if this is a subagent message - check message_content first
+      // Check if this is a subagent message - check content first
       const subagentType = getSubagentType(data)
-      const isSubagent = data.message_content?.is_sidechain === true || 
+      const subagentName = getSubagentName(data)
+      const isSubagent = data.content?.is_sidechain === true || 
+                        data.message_content?.is_sidechain === true || 
                         data.is_sidechain === true || 
                         data.isSidechain === true
       const subagentInfo = subagentType ? getSubagentInfo(subagentType) : null
@@ -181,7 +226,7 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
             key={line.id} 
             data={data} 
             locale={locale}
-            subagentInfo={isSubagent ? { type: subagentType, name: subagentInfo?.label } : undefined}
+            subagentInfo={isSubagent ? { type: subagentType, name: subagentName } : undefined}
           />
         }
         
@@ -193,7 +238,7 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
               key={line.id} 
               data={data} 
               locale={locale}
-              subagentInfo={isSubagent ? { type: subagentType, name: subagentInfo?.label } : undefined}
+              subagentInfo={isSubagent ? { type: subagentType, name: subagentName } : undefined}
             />
           }
         }
@@ -210,7 +255,7 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
           
           // Render components based on content
           // Note: A message can have multiple content types, so we render all
-          const subagentProps = isSubagent ? { type: subagentType, name: subagentInfo?.label } : undefined
+          const subagentProps = isSubagent ? { type: subagentType, name: subagentName } : undefined
           
           return (
             <React.Fragment key={line.id}>

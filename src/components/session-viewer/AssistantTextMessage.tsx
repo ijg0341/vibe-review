@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 
 interface SubagentInfo {
   type: string | null
-  name: string | undefined
+  name: string | null | undefined
 }
 
 interface AssistantTextMessageProps {
@@ -76,12 +76,7 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
         {/* Header */}
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-            Claude
-            {subagentInfo?.name && (
-              <span className="text-orange-600 dark:text-orange-400 font-normal">
-                {' '}({subagentInfo.name})
-              </span>
-            )}
+            {subagentInfo?.name ? subagentInfo.name : 'Claude'}
           </span>
           {model && (
             <Badge variant="outline" className="h-5 text-xs">
