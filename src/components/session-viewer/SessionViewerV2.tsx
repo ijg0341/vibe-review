@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { UserDirectTextMessage } from './UserDirectTextMessage'
 import { UserToolResultMessage } from './UserToolResultMessage'
 import { AssistantTextMessage } from './AssistantTextMessage'
@@ -33,11 +33,19 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   locale = 'ko',
   messageTypeFilter = []
 }) => {
-  const [collapsedSubagents, setCollapsedSubagents] = useState<Set<string>>(new Set())
   
   // Helper to detect subagent type - prioritize normalized data
   const getSubagentType = (message: any): string | null => {
-    // 정규화된 데이터 우선 사용
+    // 정규화된 데이터 우선 사용 - message_content 내부 확인
+    if (message.message_content?.subagent_name) {
+      return message.message_content.subagent_name;
+    }
+    
+    if (message.message_content?.is_sidechain !== undefined) {
+      return message.message_content.is_sidechain ? 'unknown-subagent' : null;
+    }
+    
+    // 최상위 레벨에서도 확인
     if (message.subagent_name) {
       return message.subagent_name;
     }
@@ -126,51 +134,6 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
     return 'other'
   }
   
-  // Toggle collapse state for subagent groups
-  const toggleSubagentCollapse = (subagentType: string) => {
-    const newCollapsed = new Set(collapsedSubagents)
-    if (newCollapsed.has(subagentType)) {
-      newCollapsed.delete(subagentType)
-    } else {
-      newCollapsed.add(subagentType)
-    }
-    setCollapsedSubagents(newCollapsed)
-  }
-  
-  // Helper to wrap subagent messages with distinctive styling
-  const renderSubagentWrapper = (component: React.ReactNode, subagentInfo: any, subagentType: string) => {
-    if (!subagentInfo) return component
-    
-    const isCollapsed = collapsedSubagents.has(subagentType)
-    
-    return (
-      <div className={`${subagentInfo.bgClass} ${subagentInfo.borderClass} rounded-lg p-4 my-2`}>
-        <div 
-          className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200 dark:border-gray-700 cursor-pointer"
-          onClick={() => toggleSubagentCollapse(subagentType)}
-        >
-          <span className="text-lg">{subagentInfo.icon}</span>
-          <span className={`text-sm font-medium ${subagentInfo.textClass}`}>
-            {subagentInfo.label}
-          </span>
-          <div className="flex-1"></div>
-          <span className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-1 rounded-full">
-            Sub Agent
-          </span>
-          {isCollapsed ? (
-            <ChevronDown className="h-4 w-4 text-gray-400" />
-          ) : (
-            <ChevronUp className="h-4 w-4 text-gray-400" />
-          )}
-        </div>
-        {!isCollapsed && (
-          <div className="ml-2">
-            {component}
-          </div>
-        )}
-      </div>
-    )
-  }
   
   const renderStructuredLine = (line: SessionLine) => {
     try {
@@ -182,11 +145,15 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
         const messageType = getMessageType(data)
         const isSubagent = data.is_sidechain === true || data.isSidechain === true
         
-        // Handle subagent filtering
-        if (messageTypeFilter.includes('main-only') && isSubagent) {
+        // Handle subagent filtering - check message_content first
+        const isSubagentFiltered = data.message_content?.is_sidechain === true || 
+                                  data.is_sidechain === true || 
+                                  data.isSidechain === true
+        
+        if (messageTypeFilter.includes('main-only') && isSubagentFiltered) {
           return null
         }
-        if (messageTypeFilter.includes('subagent-only') && !isSubagent) {
+        if (messageTypeFilter.includes('subagent-only') && !isSubagentFiltered) {
           return null
         }
         
@@ -197,9 +164,11 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
         }
       }
       
-      // Check if this is a subagent message
+      // Check if this is a subagent message - check message_content first
       const subagentType = getSubagentType(data)
-      const isSubagent = data.is_sidechain === true || data.isSidechain === true
+      const isSubagent = data.message_content?.is_sidechain === true || 
+                        data.is_sidechain === true || 
+                        data.isSidechain === true
       const subagentInfo = subagentType ? getSubagentInfo(subagentType) : null
       
       // Determine message type and render appropriate component
@@ -208,16 +177,24 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
         
         // User Direct Text Message
         if (typeof content === 'string') {
-          const component = <UserDirectTextMessage key={line.id} data={data} locale={locale} />
-          return isSubagent ? renderSubagentWrapper(component, subagentInfo, subagentType || 'unknown-subagent') : component
+          return <UserDirectTextMessage 
+            key={line.id} 
+            data={data} 
+            locale={locale}
+            subagentInfo={isSubagent ? { type: subagentType, name: subagentInfo?.label } : undefined}
+          />
         }
         
         // User Tool Result Message
         if (Array.isArray(content)) {
           const hasToolResult = content.some(item => item.type === 'tool_result')
           if (hasToolResult) {
-            const component = <UserToolResultMessage key={line.id} data={data} locale={locale} />
-            return isSubagent ? renderSubagentWrapper(component, subagentInfo, subagentType || 'unknown-subagent') : component
+            return <UserToolResultMessage 
+              key={line.id} 
+              data={data} 
+              locale={locale}
+              subagentInfo={isSubagent ? { type: subagentType, name: subagentInfo?.label } : undefined}
+            />
           }
         }
       }
@@ -233,15 +210,15 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
           
           // Render components based on content
           // Note: A message can have multiple content types, so we render all
-          const components = (
+          const subagentProps = isSubagent ? { type: subagentType, name: subagentInfo?.label } : undefined
+          
+          return (
             <React.Fragment key={line.id}>
-              {hasThinking && <AssistantThinkingMessage data={data} locale={locale} />}
-              {hasText && <AssistantTextMessage data={data} locale={locale} />}
-              {hasToolUse && <AssistantToolUseMessage data={data} locale={locale} />}
+              {hasThinking && <AssistantThinkingMessage data={data} locale={locale} subagentInfo={subagentProps} />}
+              {hasText && <AssistantTextMessage data={data} locale={locale} subagentInfo={subagentProps} />}
+              {hasToolUse && <AssistantToolUseMessage data={data} locale={locale} subagentInfo={subagentProps} />}
             </React.Fragment>
           )
-          
-          return isSubagent ? renderSubagentWrapper(components, subagentInfo, subagentType || 'unknown-subagent') : components
         }
       }
       

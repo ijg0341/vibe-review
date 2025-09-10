@@ -141,7 +141,15 @@ export default function TeamDateDetailPage() {
               },
               timestamp: message.timestamp,
               uuid: message.uuid,
-              sequence: message.sequence
+              sequence: message.sequence,
+              // 서브에이전트 정보 포함
+              is_sidechain: message.is_sidechain,
+              isSidechain: message.is_sidechain, // fallback
+              subagent_name: message.subagent_name,
+              message_content: {
+                is_sidechain: message.is_sidechain,
+                subagent_name: message.subagent_name
+              }
             },
             raw_text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
             message_type: message.type,

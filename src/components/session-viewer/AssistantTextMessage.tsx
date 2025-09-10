@@ -5,14 +5,21 @@ import { Bot, Zap, Clock } from 'lucide-react'
 import { formatTimestamp, formatTokenUsage, calculateDuration } from './utils'
 import { Badge } from '@/components/ui/badge'
 
+interface SubagentInfo {
+  type: string | null
+  name: string | undefined
+}
+
 interface AssistantTextMessageProps {
   data: any
   locale?: 'ko' | 'en'
+  subagentInfo?: SubagentInfo
 }
 
 export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({ 
   data, 
-  locale = 'ko' 
+  locale = 'ko',
+  subagentInfo
 }) => {
   const content = data.message?.content
   const textContent = Array.isArray(content) ? content.find(item => item.type === 'text') : null
@@ -57,7 +64,9 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
     <div className="flex gap-3">
       {/* Claude Avatar */}
       <div className="flex-shrink-0 mt-1">
-        <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+          subagentInfo ? 'bg-orange-500' : 'bg-purple-500'
+        }`}>
           <Bot className="h-4 w-4 text-white" />
         </div>
       </div>
@@ -68,6 +77,11 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
             Claude
+            {subagentInfo?.name && (
+              <span className="text-orange-600 dark:text-orange-400 font-normal">
+                {' '}({subagentInfo.name})
+              </span>
+            )}
           </span>
           {model && (
             <Badge variant="outline" className="h-5 text-xs">
@@ -84,6 +98,11 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
           <Badge variant="outline" className="text-xs h-4 bg-purple-50 dark:bg-purple-950/30">
             AssistantText
           </Badge>
+          {subagentInfo && (
+            <Badge variant="outline" className="text-xs h-4 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300">
+              SubAgent
+            </Badge>
+          )}
         </div>
         
         {/* Simple Message */}

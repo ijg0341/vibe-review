@@ -5,14 +5,21 @@ import { Brain, Zap, Clock } from 'lucide-react'
 import { formatTimestamp, truncateText, countLines, formatTokenUsage, calculateDuration } from './utils'
 import { Badge } from '@/components/ui/badge'
 
+interface SubagentInfo {
+  type: string | null
+  name: string | undefined
+}
+
 interface AssistantThinkingMessageProps {
   data: any
   locale?: 'ko' | 'en'
+  subagentInfo?: SubagentInfo
 }
 
 export const AssistantThinkingMessage: React.FC<AssistantThinkingMessageProps> = ({ 
   data, 
-  locale = 'ko' 
+  locale = 'ko',
+  subagentInfo
 }) => {
   const content = data.message?.content
   const thinkingContent = Array.isArray(content) ? content.find(item => item.type === 'thinking') : null

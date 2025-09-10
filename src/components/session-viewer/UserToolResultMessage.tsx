@@ -5,14 +5,21 @@ import { Clock } from 'lucide-react'
 import { formatTimestamp, countLines, truncateText, calculateDuration } from './utils'
 import { Badge } from '@/components/ui/badge'
 
+interface SubagentInfo {
+  type: string | null
+  name: string | undefined
+}
+
 interface UserToolResultMessageProps {
   data: any
   locale?: 'ko' | 'en'
+  subagentInfo?: SubagentInfo
 }
 
 export const UserToolResultMessage: React.FC<UserToolResultMessageProps> = ({ 
   data, 
-  locale = 'ko' 
+  locale = 'ko',
+  subagentInfo
 }) => {
   const [expanded, setExpanded] = React.useState(false) // 기본적으로 접혀있음
   
@@ -50,6 +57,11 @@ export const UserToolResultMessage: React.FC<UserToolResultMessageProps> = ({
           <Badge variant="outline" className="text-xs h-4 bg-gray-50 dark:bg-gray-950/30">
             UserToolResult
           </Badge>
+          {subagentInfo && (
+            <Badge variant="outline" className="text-xs h-4 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300">
+              SubAgent ({subagentInfo.name})
+            </Badge>
+          )}
         </div>
         
         {/* Simple Output */}

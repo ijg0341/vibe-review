@@ -100,14 +100,21 @@ const DEFAULT_TOOL = {
   label: 'Tool' 
 }
 
+interface SubagentInfo {
+  type: string | null
+  name: string | undefined
+}
+
 interface AssistantToolUseMessageProps {
   data: any
   locale?: 'ko' | 'en'
+  subagentInfo?: SubagentInfo
 }
 
 export const AssistantToolUseMessage: React.FC<AssistantToolUseMessageProps> = ({ 
   data, 
-  locale = 'ko' 
+  locale = 'ko',
+  subagentInfo
 }) => {
   const content = data.message?.content
   const toolUse = Array.isArray(content) ? content.find(item => item.type === 'tool_use') : null
