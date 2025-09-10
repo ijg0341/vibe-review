@@ -76,7 +76,7 @@ export const AssistantTextMessage: React.FC<AssistantTextMessageProps> = ({
         {/* Header */}
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-            {subagentInfo?.name ? subagentInfo.name : 'Claude'}
+            {subagentInfo?.name || 'Claude'}
           </span>
           {model && (
             <Badge variant="outline" className="h-5 text-xs">

@@ -130,31 +130,40 @@ export default function TeamDateDetailPage() {
         const sessionData = (dailyData?.data as any)?.sessions[selectedSessionIndex]
         
         if (sessionData?.session_content?.messages) {
+          // subagent_type 필드 확인
+          console.log('📦 Messages with subagent_type:', 
+            sessionData.session_content.messages
+              .filter((m: any) => m.subagent_type)
+              .map((m: any) => ({ 
+                type: m.type, 
+                subagent_type: m.subagent_type,
+                subagent_name: m.subagent_name,
+                is_sidechain: m.is_sidechain 
+              }))
+          );
+          
           // session_content.messages를 SessionViewer가 이해할 수 있는 형태로 변환
-          const convertedLines = sessionData.session_content.messages.map((message: any, index: number) => ({
-            id: index + 1,
-            line_number: index + 1,
-            content: {
-              type: message.type,
-              message: {
-                content: message.content
-              },
-              timestamp: message.timestamp,
-              uuid: message.uuid,
-              sequence: message.sequence,
-              // 서브에이전트 정보 포함
-              is_sidechain: message.is_sidechain,
-              isSidechain: message.is_sidechain, // fallback
-              subagent_name: message.subagent_name,
-              message_content: {
+          const convertedLines = sessionData.session_content.messages.map((message: any, index: number) => {
+            return {
+              id: index + 1,
+              line_number: index + 1,
+              content: {
+                type: message.type,
+                message: {
+                  content: message.content
+                },
+                timestamp: message.timestamp,
+                uuid: message.uuid,
+                sequence: message.sequence,
+                // 서브에이전트 정보를 content 레벨에 직접 포함
                 is_sidechain: message.is_sidechain,
-                subagent_name: message.subagent_name
-              }
-            },
-            raw_text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-            message_type: message.type,
-            message_timestamp: message.timestamp
-          }))
+                subagent_name: message.subagent_name  // API에서 온 subagent_name 그대로 전달
+              },
+              raw_text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+              message_type: message.type,
+              message_timestamp: message.timestamp
+            };
+          })
           
           setSessionLines(convertedLines)
         } else {

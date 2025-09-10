@@ -46,7 +46,7 @@ export const UserDirectTextMessage: React.FC<UserDirectTextMessageProps> = ({
         {/* Header */}
         <div className="flex items-center gap-2 mb-1">
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-            {subagentInfo?.name ? subagentInfo.name : (locale === 'ko' ? '사용자' : 'User')}
+            {subagentInfo?.name || (locale === 'ko' ? '사용자' : 'User')}
           </span>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {formatTimestamp(timestamp)}

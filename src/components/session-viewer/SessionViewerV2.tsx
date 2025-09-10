@@ -36,34 +36,32 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
   
   // Helper to get subagent name directly from data
   const getSubagentName = (message: any): string | null => {
-    // 디버깅을 위한 로그
-    console.log('getSubagentName - message structure:', {
-      content: message.content,
-      message_content: message.message_content,
-      top_level_subagent_name: message.subagent_name,
-      content_subagent_name: message.content?.subagent_name,
-      message_content_subagent_name: message.message_content?.subagent_name
-    });
     
     // content 레벨에서 우선 확인 (실제 데이터 구조)
     if (message.content?.subagent_name) {
-      console.log('Found subagent_name in content:', message.content.subagent_name);
       return message.content.subagent_name;
+    }
+    
+    // message.message 안에 있는지 확인 (JSONB 중첩 구조)
+    if (message.message?.subagent_name) {
+      return message.message.subagent_name;
+    }
+    
+    // message.message.messages 안에 있는지 확인 (더 깊은 중첩)
+    if (message.message?.messages?.subagent_name) {
+      return message.message.messages.subagent_name;
     }
     
     // message_content 내부 확인
     if (message.message_content?.subagent_name) {
-      console.log('Found subagent_name in message_content:', message.message_content.subagent_name);
       return message.message_content.subagent_name;
     }
     
     // 최상위 레벨에서 확인
     if (message.subagent_name) {
-      console.log('Found subagent_name at top level:', message.subagent_name);
       return message.subagent_name;
     }
     
-    console.log('No subagent_name found');
     return null;
   }
 
