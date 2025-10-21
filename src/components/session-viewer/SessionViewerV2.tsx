@@ -244,17 +244,17 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
       
       if (data.type === 'assistant') {
         const content = data.message?.content
-        
+
         if (Array.isArray(content)) {
           // Check content types
           const hasText = content.some(item => item.type === 'text')
           const hasToolUse = content.some(item => item.type === 'tool_use')
           const hasThinking = content.some(item => item.type === 'thinking')
-          
+
           // Render components based on content
           // Note: A message can have multiple content types, so we render all
           const subagentProps = isSubagent ? { type: subagentType, name: subagentName } : undefined
-          
+
           return (
             <React.Fragment key={line.id}>
               {hasThinking && <AssistantThinkingMessage data={data} locale={locale} subagentInfo={subagentProps} />}
@@ -264,7 +264,12 @@ export const SessionViewerV2: React.FC<SessionViewerV2Props> = ({
           )
         }
       }
-      
+
+      // Skip Summary and File History Snapshot messages (internal metadata)
+      if (data.type === 'summary' || data.type === 'file-history-snapshot') {
+        return null
+      }
+
       // Fallback for unknown message types
       return (
         <Card key={line.id} className="p-4 bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800">

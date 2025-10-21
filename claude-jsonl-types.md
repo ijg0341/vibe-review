@@ -77,6 +77,44 @@ Claude의 응답 메시지
 }
 ```
 
+### 3. Summary 메시지 (`type: "summary"`)
+대화 세션 요약 메시지
+
+```json
+{
+  "type": "summary",
+  "summary": "I apologize, but no conversation was provided for me to summarize. Could you please share the conversation text?",
+  "leafUuid": "9c044e84-f314-4d67-9cec-c2486e381f2b"
+}
+```
+
+**필드 설명:**
+- `summary`: 세션 대화의 요약 텍스트
+- `leafUuid`: 마지막 메시지의 UUID 참조 (대화 체인의 끝)
+
+### 4. File History Snapshot 메시지 (`type: "file-history-snapshot"`)
+파일 변경 이력 스냅샷 저장 메시지
+
+```json
+{
+  "type": "file-history-snapshot",
+  "messageId": "5db384c8-436f-491b-852c-61c952793306",
+  "snapshot": {
+    "messageId": "5db384c8-436f-491b-852c-61c952793306",
+    "trackedFileBackups": {},
+    "timestamp": "2025-10-21T02:17:25.104Z"
+  },
+  "isSnapshotUpdate": false
+}
+```
+
+**필드 설명:**
+- `messageId`: 스냅샷과 연결된 메시지 ID
+- `snapshot`: 스냅샷 데이터
+  - `trackedFileBackups`: 추적된 파일들의 백업 정보 (객체)
+  - `timestamp`: 스냅샷 생성 시간
+- `isSnapshotUpdate`: 스냅샷 업데이트 여부 (true/false)
+
 #### 2-2. Tool 사용
 ```json
 {

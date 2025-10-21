@@ -33,9 +33,9 @@ interface AISummaryPanelProps {
   sessionLines?: any // 새로운 구조에서는 필요 없음
 }
 
-export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({ 
-  userId, 
-  date, 
+export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
+  userId,
+  date,
   locale = 'ko',
   sessions = [],
   sessionLines = []
@@ -44,13 +44,17 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCached, setIsCached] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
 
   const generateSummary = async (forceRegenerate = false) => {
     try {
+      console.log('[AISummaryPanel] Starting summary generation...', { userId, date, forceRegenerate })
       setLoading(true)
       setError(null)
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary`, {
+      setSummary('') // 스트리밍 시작 전 초기화
+      setIsStreaming(false)
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -59,17 +63,74 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
         body: JSON.stringify({ userId, date, forceRegenerate }),
       })
 
+      console.log('[AISummaryPanel] Response received:', response.status, response.headers.get('content-type'))
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const data = await response.json()
-      setSummary(data.data?.summary || data.summary)
-      setIsCached(data.data?.cached || data.cached || false)
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('Response body is not readable')
+      }
+
+      let accumulatedSummary = ''
+      setIsStreaming(true)
+      setLoading(false) // 스트리밍 시작하면 로딩 해제
+
+      console.log('[AISummaryPanel] Starting to read stream...')
+
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) {
+          console.log('[AISummaryPanel] Stream ended')
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue
+
+          const data = line.replace('data: ', '').trim()
+
+          if (data === '[DONE]') {
+            console.log('[AISummaryPanel] Received [DONE] signal')
+            setIsStreaming(false)
+            setLoading(false)
+            return
+          }
+
+          try {
+            const parsed = JSON.parse(data)
+
+            if (parsed.type === 'content') {
+              accumulatedSummary += parsed.chunk
+              setSummary(accumulatedSummary)
+              console.log('[AISummaryPanel] Chunk received, total length:', accumulatedSummary.length)
+            } else if (parsed.type === 'done') {
+              console.log('[AISummaryPanel] Received done event', parsed)
+              setIsCached(parsed.cached || false)
+              setIsStreaming(false)
+              setLoading(false)
+              return
+            } else if (parsed.type === 'error') {
+              throw new Error(parsed.error)
+            }
+          } catch (parseErr) {
+            console.warn('[AISummaryPanel] Failed to parse SSE data:', data, parseErr)
+          }
+        }
+      }
     } catch (err) {
-      console.error('Error generating summary:', err)
+      console.error('[AISummaryPanel] Error generating summary:', err)
       setError(locale === 'ko' ? '요약 생성에 실패했습니다.' : 'Failed to generate summary')
     } finally {
+      setIsStreaming(false)
       setLoading(false)
     }
   }
@@ -161,12 +222,12 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       <CardContent className="flex-1 overflow-hidden p-4">
 
         <ScrollArea className="h-full">
-          {loading ? (
+          {loading && !isStreaming ? (
             <div className="flex flex-col items-center justify-center h-40">
               <Loader2 className="h-8 w-8 animate-spin mb-4 text-primary" />
               <p className="text-sm text-muted-foreground text-center">
-                {locale === 'ko' 
-                  ? 'AI가 오늘의 작업을 분석하고 있습니다...' 
+                {locale === 'ko'
+                  ? 'AI가 오늘의 작업을 분석하고 있습니다...'
                   : 'AI is analyzing today\'s work...'}
               </p>
             </div>
@@ -180,12 +241,15 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
             </div>
           ) : summary ? (
             <div className="prose prose-sm max-w-none dark:prose-invert">
-              <div 
+              <div
                 className="markdown-content space-y-1 text-sm leading-snug"
-                dangerouslySetInnerHTML={{ 
-                  __html: formatMarkdown(summary) 
+                dangerouslySetInnerHTML={{
+                  __html: formatMarkdown(summary)
                 }}
               />
+              {isStreaming && (
+                <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
+              )}
               <style jsx>{`
                 .markdown-content h2 {
                   border-bottom: 1px solid hsl(var(--border));
