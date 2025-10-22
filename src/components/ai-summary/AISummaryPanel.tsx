@@ -2,16 +2,64 @@
 
 import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Calendar, 
-  Loader2, 
-  RefreshCw, 
+import { Separator } from '@/components/ui/separator'
+import {
+  Calendar,
+  Loader2,
+  RefreshCw,
   Sparkles,
-  AlertCircle 
+  AlertCircle,
+  Folder
 } from 'lucide-react'
+import { WorkCategoryChart } from './WorkCategoryChart'
+import { ProjectTodoList } from './ProjectTodoList'
+import { QualityScore } from './QualityScore'
+
+interface WorkCategoryData {
+  minutes: number
+  percentage: number
+  description: string | null
+}
+
+interface WorkCategories {
+  planning: WorkCategoryData
+  frontend: WorkCategoryData
+  backend: WorkCategoryData
+  qa: WorkCategoryData
+  devops: WorkCategoryData
+  research: WorkCategoryData
+  other: WorkCategoryData
+}
+
+interface TodoItem {
+  text: string
+  category: 'planning' | 'frontend' | 'backend' | 'qa' | 'devops' | 'research' | 'other'
+}
+
+interface ProjectTodo {
+  project_id: string | null
+  project_name: string
+  todos: TodoItem[]
+}
+
+interface ProjectTodos {
+  [projectSlug: string]: ProjectTodo
+}
+
+interface ProjectSummary {
+  [projectSlug: string]: string
+}
+
+interface ParsedSummaryData {
+  summary: ProjectSummary
+  work_categories: WorkCategories
+  project_todos: ProjectTodos
+  quality_score: number
+  quality_score_explanation: string
+}
 
 interface AISummaryPanelProps {
   userId: string
@@ -30,7 +78,7 @@ interface AISummaryPanelProps {
       }>
     }
   }>
-  sessionLines?: any // 새로운 구조에서는 필요 없음
+  sessionLines?: any
 }
 
 export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
@@ -41,20 +89,20 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
   sessionLines = []
 }) => {
   const [summary, setSummary] = useState<string>('')
+  const [parsedData, setParsedData] = useState<ParsedSummaryData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCached, setIsCached] = useState(false)
-  const [isStreaming, setIsStreaming] = useState(false)
 
   const generateSummary = async (forceRegenerate = false) => {
     try {
       console.log('[AISummaryPanel] Starting summary generation...', { userId, date, forceRegenerate })
       setLoading(true)
       setError(null)
-      setSummary('') // 스트리밍 시작 전 초기화
-      setIsStreaming(false)
+      setSummary('')
+      setParsedData(null)
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary-stream`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -63,80 +111,46 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
         body: JSON.stringify({ userId, date, forceRegenerate }),
       })
 
-      console.log('[AISummaryPanel] Response received:', response.status, response.headers.get('content-type'))
+      console.log('[AISummaryPanel] Response received:', response.status)
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
+      const result = await response.json()
 
-      if (!reader) {
-        throw new Error('Response body is not readable')
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate summary')
       }
 
-      let accumulatedSummary = ''
-      setIsStreaming(true)
-      setLoading(false) // 스트리밍 시작하면 로딩 해제
+      const { data } = result
 
-      console.log('[AISummaryPanel] Starting to read stream...')
+      console.log('[AISummaryPanel] Summary received', data)
 
-      while (true) {
-        const { done, value } = await reader.read()
+      setIsCached(data.cached || false)
+      setSummary(data.summary)
 
-        if (done) {
-          console.log('[AISummaryPanel] Stream ended')
-          break
-        }
-
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue
-
-          const data = line.replace('data: ', '').trim()
-
-          if (data === '[DONE]') {
-            console.log('[AISummaryPanel] Received [DONE] signal')
-            setIsStreaming(false)
-            setLoading(false)
-            return
-          }
-
-          try {
-            const parsed = JSON.parse(data)
-
-            if (parsed.type === 'content') {
-              accumulatedSummary += parsed.chunk
-              setSummary(accumulatedSummary)
-              console.log('[AISummaryPanel] Chunk received, total length:', accumulatedSummary.length)
-            } else if (parsed.type === 'done') {
-              console.log('[AISummaryPanel] Received done event', parsed)
-              setIsCached(parsed.cached || false)
-              setIsStreaming(false)
-              setLoading(false)
-              return
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.error)
-            }
-          } catch (parseErr) {
-            console.warn('[AISummaryPanel] Failed to parse SSE data:', data, parseErr)
-          }
-        }
+      // 파싱된 데이터 저장
+      if (data.work_categories && data.project_todos && data.quality_score !== undefined) {
+        setParsedData({
+          summary: data.daily_summary || {},
+          work_categories: data.work_categories,
+          project_todos: data.project_todos,
+          quality_score: data.quality_score,
+          quality_score_explanation: data.quality_score_explanation || ''
+        })
       }
+
+      setLoading(false)
     } catch (err) {
       console.error('[AISummaryPanel] Error generating summary:', err)
       setError(locale === 'ko' ? '요약 생성에 실패했습니다.' : 'Failed to generate summary')
-    } finally {
-      setIsStreaming(false)
       setLoading(false)
     }
   }
 
   const [hasInitialized, setHasInitialized] = useState(false)
-  
+
   useEffect(() => {
     if (userId && date && !hasInitialized && !loading && !summary) {
       console.log('AISummaryPanel: Initializing summary for', userId, date)
@@ -149,34 +163,13 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
     const date = new Date(dateString + 'T00:00:00')
     return date.toLocaleDateString(
       locale === 'ko' ? 'ko-KR' : 'en-US',
-      { 
-        year: 'numeric', 
-        month: 'long', 
+      {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
-        weekday: 'long' 
+        weekday: 'long'
       }
     )
-  }
-
-  const formatMarkdown = (text: string) => {
-    return text
-      // 헤딩 처리
-      .replace(/^### (.*$)/gim, '<h3 class="text-base font-semibold text-foreground mb-1 mt-2">$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2 class="text-lg font-bold text-foreground mb-2 mt-3 flex items-center gap-2">$1</h2>')
-      
-      // 체크박스 리스트 (완료된 작업)
-      .replace(/^- \[x\] (.*$)/gim, '<div class="flex items-start gap-2 mb-1 text-sm"><input type="checkbox" class="mt-0.5 rounded border-muted-foreground/50" checked disabled /><span class="text-foreground">$1</span></div>')
-      .replace(/^- \[ \] (.*$)/gim, '<div class="flex items-start gap-2 mb-1 text-sm"><input type="checkbox" class="mt-0.5 rounded border-muted-foreground/50" disabled /><span class="text-foreground">$1</span></div>')
-      
-      // 볼드 텍스트 (프로젝트 이름)
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-base text-foreground inline-block mt-3 mb-1">$1</strong>')
-      
-      // 일반 리스트
-      .replace(/^- ((?!\[).*$)/gim, '<div class="flex items-start gap-2 mb-1 text-sm"><span class="text-muted-foreground mt-0.5">•</span><span class="text-foreground">$1</span></div>')
-      
-      // 줄바꿈 처리
-      .replace(/\n\n/g, '<br><br>')
-      .replace(/\n/g, '<br>')
   }
 
   return (
@@ -188,7 +181,7 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
             {locale === 'ko' ? '오늘의 성과' : 'Today\'s Achievement'}
           </CardTitle>
           <Button
-            onClick={() => generateSummary(true)} // 새로고침 시 강제 재생성
+            onClick={() => generateSummary(true)}
             disabled={loading}
             size="sm"
             variant="outline"
@@ -220,9 +213,8 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       </CardHeader>
 
       <CardContent className="flex-1 overflow-hidden p-4">
-
         <ScrollArea className="h-full">
-          {loading && !isStreaming ? (
+          {loading ? (
             <div className="flex flex-col items-center justify-center h-40">
               <Loader2 className="h-8 w-8 animate-spin mb-4 text-primary" />
               <p className="text-sm text-muted-foreground text-center">
@@ -239,41 +231,94 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
                 {locale === 'ko' ? '다시 시도' : 'Try Again'}
               </Button>
             </div>
-          ) : summary ? (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
-              <div
-                className="markdown-content space-y-1 text-sm leading-snug"
-                dangerouslySetInnerHTML={{
-                  __html: formatMarkdown(summary)
-                }}
-              />
-              {isStreaming && (
-                <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
+          ) : parsedData ? (
+            <div className="prose prose-sm max-w-none dark:prose-invert space-y-6">
+              {/* 1. 업무 요약 (프로젝트별 총평) */}
+              {parsedData.summary && typeof parsedData.summary === 'object' && Object.keys(parsedData.summary).length > 0 && (
+                <section>
+                  <h2 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2 border-b pb-2">
+                    📝 {locale === 'ko' ? '오늘의 업무 요약' : 'Daily Summary'}
+                  </h2>
+                  <div className="space-y-3">
+                    {Object.entries(parsedData.summary).map(([projectSlug, projectSummary]) => {
+                      // 타입 검증: projectSummary가 문자열인지 확인
+                      const summaryText = typeof projectSummary === 'string'
+                        ? projectSummary
+                        : JSON.stringify(projectSummary)
+
+                      return (
+                        <div key={projectSlug} className="bg-muted/30 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Folder className="h-4 w-4 text-primary" />
+                            <h3 className="font-semibold text-sm text-foreground">
+                              {parsedData.project_todos[projectSlug]?.project_name || projectSlug}
+                            </h3>
+                          </div>
+                          <p className="text-sm text-foreground leading-relaxed pl-6">
+                            {summaryText}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
               )}
-              <style jsx>{`
-                .markdown-content h2 {
-                  border-bottom: 1px solid hsl(var(--border));
-                  padding-bottom: 4px;
-                }
-                .markdown-content h3 {
-                  color: hsl(var(--muted-foreground));
-                }
-                .markdown-content input[type="checkbox"] {
-                  accent-color: hsl(var(--primary));
-                }
-                .markdown-content strong {
-                  background: hsl(var(--muted) / 0.3);
-                  padding: 1px 4px;
-                  border-radius: 2px;
-                }
-              `}</style>
+
+              <Separator className="my-4" />
+
+              {/* 2. 프로젝트별 Todo 리스트 */}
+              {parsedData.project_todos && Object.keys(parsedData.project_todos).length > 0 && (
+                <section>
+                  <h2 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2 border-b pb-2">
+                    ✅ {locale === 'ko' ? '프로젝트별 작업 내역' : 'Project Tasks'}
+                  </h2>
+                  <ProjectTodoList projectTodos={parsedData.project_todos} locale={locale} />
+                </section>
+              )}
+
+              <Separator className="my-4" />
+
+              {/* 3. 업무 카테고리 차트 */}
+              {parsedData.work_categories && (
+                <section>
+                  <h2 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2 border-b pb-2">
+                    📊 {locale === 'ko' ? '업무 카테고리 분류' : 'Work Categories'}
+                  </h2>
+                  <WorkCategoryChart workCategories={parsedData.work_categories} locale={locale} />
+                </section>
+              )}
+
+              <Separator className="my-4" />
+
+              {/* 4. 품질 점수 */}
+              {parsedData.quality_score !== undefined && (
+                <section>
+                  <h2 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2 border-b pb-2">
+                    ⭐ {locale === 'ko' ? '프롬프트 품질 점수' : 'Prompt Quality Score'}
+                  </h2>
+                  <QualityScore
+                    qualityScore={parsedData.quality_score}
+                    qualityScoreExplanation={parsedData.quality_score_explanation}
+                    locale={locale}
+                  />
+                </section>
+              )}
+            </div>
+          ) : summary ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <Loader2 className="h-8 w-8 mb-4 text-muted-foreground animate-spin" />
+              <p className="text-sm text-muted-foreground">
+                {locale === 'ko'
+                  ? '데이터를 파싱하는 중...'
+                  : 'Parsing data...'}
+              </p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-40 text-center">
               <Sparkles className="h-8 w-8 mb-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                {locale === 'ko' 
-                  ? '아직 요약이 생성되지 않았습니다.' 
+                {locale === 'ko'
+                  ? '아직 요약이 생성되지 않았습니다.'
                   : 'No summary generated yet.'}
               </p>
             </div>
