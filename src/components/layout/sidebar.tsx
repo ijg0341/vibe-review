@@ -4,11 +4,11 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { 
-  Home, 
-  Upload, 
-  FolderOpen, 
-  MessageSquare, 
+import {
+  Home,
+  Upload,
+  FolderOpen,
+  MessageSquare,
   Settings,
   ChevronLeft,
   Plus,
@@ -16,7 +16,8 @@ import {
   Users,
   Folder,
   BookOpen,
-  BarChart3
+  BarChart3,
+  ClipboardList
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -54,6 +55,11 @@ export function Sidebar({ className, isCollapsed, onToggle, onUploadClick }: Sid
       label: t.sidebar.team,
       icon: Users,
       href: "/team",
+    },
+    {
+      label: locale === 'ko' ? '데일리 스크럼' : 'Daily Scrum',
+      icon: ClipboardList,
+      href: "/daily-scrum",
     },
     // {
     //   label: locale === 'ko' ? '프로젝트' : 'Projects',
