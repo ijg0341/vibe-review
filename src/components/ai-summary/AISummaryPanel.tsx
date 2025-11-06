@@ -137,8 +137,13 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       }
 
       const { data } = result
+      const isCachedResponse = data.cached || false
 
-      console.log('[AISummaryPanel] Summary received', data)
+      console.log('[AISummaryPanel] Summary received', {
+        cached: isCachedResponse,
+        created_at: data.created_at,
+        forceRegenerate
+      })
       console.log('[AISummaryPanel] Checking parsed data:', {
         hasWorkCategories: !!data.work_categories,
         hasProjectTodos: !!data.project_todos,
@@ -146,8 +151,15 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
         dailySummary: data.daily_summary
       })
 
-      setIsCached(data.cached || false)
+      setIsCached(isCachedResponse)
       setSummary(data.summary)
+
+      // 캐시 로그 출력
+      if (isCachedResponse) {
+        console.log('[AISummaryPanel] ✅ Using cached summary from', data.created_at)
+      } else {
+        console.log('[AISummaryPanel] 🆕 Generated new summary')
+      }
 
       // 파싱된 데이터 저장 (필드가 있으면 저장, 없으면 기본값 사용)
       console.log('[AISummaryPanel] Setting parsed data')
@@ -176,14 +188,19 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
   }
 
   const [hasInitialized, setHasInitialized] = useState(false)
+  const [lastFetchedDate, setLastFetchedDate] = useState<string>('')
 
   useEffect(() => {
-    if (userId && date && !hasInitialized && !loading && !summary) {
-      console.log('AISummaryPanel: Initializing summary for', userId, date)
+    // date가 실제로 변경되었는지 확인
+    const dateChanged = lastFetchedDate !== date
+
+    if (userId && date && (!hasInitialized || dateChanged) && !loading) {
+      console.log('AISummaryPanel: Initializing summary for', userId, date, { dateChanged, hasInitialized })
       setHasInitialized(true)
+      setLastFetchedDate(date)
       generateSummary(false)
     }
-  }, [userId, date])
+  }, [userId, date, hasInitialized, loading, lastFetchedDate])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')

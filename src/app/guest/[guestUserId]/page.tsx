@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -77,6 +77,8 @@ interface GuestData {
   sessions: Session[]
 }
 
+type SessionsByProject = Record<string, Session[]>
+
 export default function GuestViewPage() {
   const params = useParams()
   const guestUserId = params.guestUserId as string
@@ -85,10 +87,8 @@ export default function GuestViewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [sessionLines, setSessionLines] = useState<SessionLine[]>([])
-  const [linesLoading, setLinesLoading] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
-  const [rightPanelWidth, setRightPanelWidth] = useState(320)
+  const [sessionViewerWidth, setSessionViewerWidth] = useState(420)
   const [isResizing, setIsResizing] = useState(false)
 
   // 데이터 로드
@@ -118,6 +118,51 @@ export default function GuestViewPage() {
     fetchGuestData()
   }, [guestUserId])
 
+  // 프로젝트별 세션 그룹화 (메모이제이션)
+  const sessionsByProject = useMemo<SessionsByProject>(() =>
+    (data?.sessions || []).reduce((acc, session) => {
+      const projectId = session.project_name || session.project || 'no-project'
+      if (!acc[projectId]) {
+        acc[projectId] = []
+      }
+      acc[projectId].push(session)
+      return acc
+    }, {} as SessionsByProject),
+    [data?.sessions]
+  )
+
+  // 세션 라인 데이터 (파생 상태)
+  const sessionLines = useMemo<SessionLine[]>(() => {
+    if (!selectedSessionId || !data) return []
+
+    const session = data.sessions.find(s => s.id === selectedSessionId)
+    if (!session?.session_content?.messages) return []
+
+    return session.session_content.messages.map((message, index) => ({
+      id: index + 1,
+      line_number: index + 1,
+      content: {
+        type: message.type,
+        message: { content: message.content },
+        timestamp: message.timestamp,
+        uuid: message.uuid,
+        sequence: message.sequence,
+        is_sidechain: message.is_sidechain,
+        subagent_name: message.subagent_name
+      },
+      raw_text: typeof message.content === 'string'
+        ? message.content
+        : JSON.stringify(message.content),
+      message_type: message.type,
+      message_timestamp: message.timestamp
+    }))
+  }, [selectedSessionId, data])
+
+  // 세션 선택 함수 (메모이제이션)
+  const selectSession = useCallback((sessionId: string) => {
+    setSelectedSessionId(sessionId)
+  }, [])
+
   // 세션 자동 선택 및 프로젝트 확장
   useEffect(() => {
     if (data && data.sessions.length > 0) {
@@ -128,29 +173,36 @@ export default function GuestViewPage() {
         selectSession(data.sessions[0].id)
       }
     }
-  }, [data])
+  }, [data, sessionsByProject, selectSession])
 
-  // 리사이즈 핸들러
+  // 리사이즈 핸들러 (RAF 최적화)
   useEffect(() => {
-    if (isResizing) {
-      const handleMouseMove = (e: MouseEvent) => {
-        requestAnimationFrame(() => {
-          const newWidth = window.innerWidth - e.clientX - 10
-          setRightPanelWidth(Math.min(Math.max(280, newWidth), 600))
-        })
-      }
+    if (!isResizing) return
 
-      const handleMouseUp = () => {
-        setIsResizing(false)
-      }
+    let rafId: number | null = null
 
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
+    const handleMouseMove = (e: MouseEvent) => {
+      if (rafId) cancelAnimationFrame(rafId)
 
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
+      rafId = requestAnimationFrame(() => {
+        const newWidth = window.innerWidth - e.clientX - 10
+        setSessionViewerWidth(Math.min(Math.max(320, newWidth), 800))
+        rafId = null
+      })
+    }
+
+    const handleMouseUp = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isResizing])
 
@@ -160,45 +212,6 @@ export default function GuestViewPage() {
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
-
-  const selectSession = (sessionId: string) => {
-    setSelectedSessionId(sessionId)
-    setLinesLoading(true)
-
-    try {
-      const session = data?.sessions.find(s => s.id === sessionId)
-
-      if (session?.session_content?.messages) {
-        const convertedLines = session.session_content.messages.map((message, index) => ({
-          id: index + 1,
-          line_number: index + 1,
-          content: {
-            type: message.type,
-            message: {
-              content: message.content
-            },
-            timestamp: message.timestamp,
-            uuid: message.uuid,
-            sequence: message.sequence,
-            is_sidechain: message.is_sidechain,
-            subagent_name: message.subagent_name
-          },
-          raw_text: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-          message_type: message.type,
-          message_timestamp: message.timestamp
-        }))
-
-        setSessionLines(convertedLines)
-      } else {
-        setSessionLines([])
-      }
-    } catch (error) {
-      console.error('Error in selectSession:', error)
-      setSessionLines([])
-    } finally {
-      setLinesLoading(false)
-    }
   }
 
   const toggleProjectExpand = (projectId: string) => {
@@ -211,17 +224,14 @@ export default function GuestViewPage() {
     setExpandedProjects(newExpanded)
   }
 
-  // 프로젝트별 세션 그룹화
-  const sessionsByProject = (data?.sessions || []).reduce((acc: any, session: Session) => {
-    const projectId = session.project_name || session.project || 'no-project'
-    if (!acc[projectId]) {
-      acc[projectId] = []
-    }
-    acc[projectId].push(session)
-    return acc
-  }, {})
-
   const selectedSession = data?.sessions.find(s => s.id === selectedSessionId)
+
+  // 선택된 세션의 날짜를 메모이제이션 (같은 날짜면 참조 유지)
+  const selectedDate = useMemo(() => {
+    if (!selectedSession) return ''
+    const timestamp = selectedSession.start_timestamp || selectedSession.created_at
+    return new Date(timestamp).toISOString().split('T')[0]
+  }, [selectedSession?.start_timestamp, selectedSession?.created_at])
 
   if (loading) {
     return (
@@ -283,7 +293,7 @@ export default function GuestViewPage() {
           {/* 프로젝트별 세션 목록 */}
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-4">
-              {Object.entries(sessionsByProject).map(([projectId, projectSessions]: [string, any]) => {
+              {Object.entries(sessionsByProject).map(([projectId, projectSessions]) => {
                 const isExpanded = expandedProjects.has(projectId)
                 const projectName = projectId === 'no-project' ? '프로젝트 없음' : projectId
 
@@ -378,61 +388,37 @@ export default function GuestViewPage() {
           </ScrollArea>
         </div>
 
-        {/* 중앙 - 세션 상세 */}
+        {/* 중앙 - AI 요약 (오늘의 성과) */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {selectedSession ? (
-            <>
-              {/* 세션 헤더 */}
-              <div className="p-4 border-b bg-background">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h1 className="text-xl font-semibold flex items-center gap-2">
-                      <Code className="h-5 w-5" />
-                      {selectedSession.filename}
-                    </h1>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Folder className="h-3 w-3" />
-                        {selectedSession.project_name}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Database className="h-3 w-3" />
-                        {formatFileSize(selectedSession.file_size)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(selectedSession.upload_time).toLocaleString('ko-KR')}
-                      </span>
-                      <Badge variant={selectedSession.upload_status === 'processed' ? 'default' : 'secondary'}>
-                        {selectedSession.upload_status}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 세션 뷰어 */}
-              <div className="flex-1 overflow-hidden min-h-0">
-                <SessionViewer
-                  lines={sessionLines}
-                  loading={linesLoading}
-                  sessionTitle={undefined}
-                  sessionInfo={{
-                    user: undefined,
-                    uploadTime: selectedSession.upload_time,
-                    processedLines: selectedSession.file_size
-                  }}
-                  locale="ko"
-                  showFilter={true}
-                />
-              </div>
-            </>
+            <AISummaryPanel
+              userId={guestUserId}
+              date={selectedDate}
+              locale="ko"
+              isGuestMode={true}
+              sessions={data?.sessions
+                .filter(s => s.id === selectedSession.id)
+                .map(session => ({
+                  id: session.id,
+                  filename: session.filename,
+                  project: session.project,
+                  project_name: session.project_name,
+                  session_content: {
+                    messages: session.session_content.messages.map(msg => ({
+                      type: (msg.type === 'user' || msg.type === 'assistant') ? msg.type : 'user',
+                      content: msg.content,
+                      timestamp: msg.timestamp
+                    }))
+                  }
+                })) || []}
+              sessionLines={sessionLines}
+            />
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
-                  왼쪽에서 세션을 선택하세요
+                  왼쪽에서 세션을 선택하면 오늘의 성과가 표시됩니다
                 </p>
               </div>
             </div>
@@ -457,45 +443,62 @@ export default function GuestViewPage() {
           </div>
         </div>
 
-        {/* 오른쪽 - AI 요약 */}
+        {/* 오른쪽 - 세션 상세 */}
         <div
-          className="border-l bg-background flex-shrink-0 transition-none overflow-hidden"
+          className="border-l bg-background flex-shrink-0 transition-none overflow-hidden flex flex-col"
           style={{
-            width: `${rightPanelWidth}px`,
+            width: `${sessionViewerWidth}px`,
             willChange: isResizing ? 'width' : 'auto'
           }}
         >
           {selectedSession ? (
-            <AISummaryPanel
-              userId={guestUserId}
-              date={selectedSession.start_timestamp
-                ? new Date(selectedSession.start_timestamp).toISOString().split('T')[0]
-                : new Date(selectedSession.created_at).toISOString().split('T')[0]
-              }
-              locale="ko"
-              isGuestMode={true}
-              sessions={data?.sessions
-                .filter(s => s.id === selectedSession.id)
-                .map(session => ({
-                  id: session.id,
-                  filename: session.filename,
-                  project: session.project,
-                  project_name: session.project_name,
-                  session_content: {
-                    messages: session.session_content.messages.map(msg => ({
-                      type: (msg.type === 'user' || msg.type === 'assistant') ? msg.type : 'user',
-                      content: msg.content,
-                      timestamp: msg.timestamp
-                    }))
-                  }
-                })) || []}
-              sessionLines={sessionLines}
-            />
+            <>
+              {/* 세션 헤더 */}
+              <div className="p-3 border-b bg-background flex-shrink-0">
+                <h2 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <Code className="h-4 w-4" />
+                  세션 내용
+                </h2>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium truncate" title={selectedSession.filename}>
+                    {selectedSession.filename}
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Folder className="h-3 w-3" />
+                      {selectedSession.project_name}
+                    </span>
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedSession.total_messages} msgs
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {selectedSession.total_tokens} tokens
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* 세션 뷰어 */}
+              <div className="flex-1 overflow-hidden min-h-0">
+                <SessionViewer
+                  lines={sessionLines}
+                  loading={false}
+                  sessionTitle={undefined}
+                  sessionInfo={{
+                    user: undefined,
+                    uploadTime: selectedSession.upload_time,
+                    processedLines: selectedSession.file_size
+                  }}
+                  locale="ko"
+                  showFilter={true}
+                />
+              </div>
+            </>
           ) : (
             <div className="p-4">
-              <h3 className="font-semibold mb-4">AI 요약</h3>
+              <h3 className="font-semibold mb-4">세션 내용</h3>
               <p className="text-sm text-muted-foreground">
-                세션을 선택하면 AI 요약이 표시됩니다.
+                세션을 선택하면 상세 내용이 표시됩니다.
               </p>
             </div>
           )}
