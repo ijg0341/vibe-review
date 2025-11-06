@@ -139,20 +139,33 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
       const { data } = result
 
       console.log('[AISummaryPanel] Summary received', data)
+      console.log('[AISummaryPanel] Checking parsed data:', {
+        hasWorkCategories: !!data.work_categories,
+        hasProjectTodos: !!data.project_todos,
+        hasQualityScore: data.quality_score !== undefined,
+        dailySummary: data.daily_summary
+      })
 
       setIsCached(data.cached || false)
       setSummary(data.summary)
 
-      // 파싱된 데이터 저장
-      if (data.work_categories && data.project_todos && data.quality_score !== undefined) {
-        setParsedData({
-          summary: data.daily_summary || {},
-          work_categories: data.work_categories,
-          project_todos: data.project_todos,
-          quality_score: data.quality_score,
-          quality_score_explanation: data.quality_score_explanation || ''
-        })
-      }
+      // 파싱된 데이터 저장 (필드가 있으면 저장, 없으면 기본값 사용)
+      console.log('[AISummaryPanel] Setting parsed data')
+      setParsedData({
+        summary: data.daily_summary || {},
+        work_categories: data.work_categories || {
+          planning: { minutes: 0, percentage: 0, description: null },
+          frontend: { minutes: 0, percentage: 0, description: null },
+          backend: { minutes: 0, percentage: 0, description: null },
+          qa: { minutes: 0, percentage: 0, description: null },
+          devops: { minutes: 0, percentage: 0, description: null },
+          research: { minutes: 0, percentage: 0, description: null },
+          other: { minutes: 0, percentage: 0, description: null }
+        },
+        project_todos: data.project_todos || {},
+        quality_score: data.quality_score ?? 0,
+        quality_score_explanation: data.quality_score_explanation || ''
+      })
 
       setLoading(false)
     } catch (err) {
