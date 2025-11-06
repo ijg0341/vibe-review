@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SessionViewer } from '@/components/sessions/SessionViewer'
+import { AISummaryPanel } from '@/components/ai-summary/AISummaryPanel'
 import {
   FileText,
   Clock,
@@ -456,18 +457,48 @@ export default function GuestViewPage() {
           </div>
         </div>
 
-        {/* 오른쪽 - AI 요약 (임시로 비어있음) */}
+        {/* 오른쪽 - AI 요약 */}
         <div
-          className="border-l bg-background flex-shrink-0 transition-none p-4"
+          className="border-l bg-background flex-shrink-0 transition-none overflow-hidden"
           style={{
             width: `${rightPanelWidth}px`,
             willChange: isResizing ? 'width' : 'auto'
           }}
         >
-          <h3 className="font-semibold mb-4">AI 요약</h3>
-          <p className="text-sm text-muted-foreground">
-            게스트 세션 AI 요약 기능은 곧 제공될 예정입니다.
-          </p>
+          {selectedSession ? (
+            <AISummaryPanel
+              userId={guestUserId}
+              date={selectedSession.start_timestamp
+                ? new Date(selectedSession.start_timestamp).toISOString().split('T')[0]
+                : new Date(selectedSession.created_at).toISOString().split('T')[0]
+              }
+              locale="ko"
+              isGuestMode={true}
+              sessions={data?.sessions
+                .filter(s => s.id === selectedSession.id)
+                .map(session => ({
+                  id: session.id,
+                  filename: session.filename,
+                  project: session.project,
+                  project_name: session.project_name,
+                  session_content: {
+                    messages: session.session_content.messages.map(msg => ({
+                      type: (msg.type === 'user' || msg.type === 'assistant') ? msg.type : 'user',
+                      content: msg.content,
+                      timestamp: msg.timestamp
+                    }))
+                  }
+                })) || []}
+              sessionLines={sessionLines}
+            />
+          ) : (
+            <div className="p-4">
+              <h3 className="font-semibold mb-4">AI 요약</h3>
+              <p className="text-sm text-muted-foreground">
+                세션을 선택하면 AI 요약이 표시됩니다.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

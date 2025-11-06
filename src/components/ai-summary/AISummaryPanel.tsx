@@ -65,6 +65,7 @@ interface AISummaryPanelProps {
   userId: string
   date: string
   locale?: 'ko' | 'en'
+  isGuestMode?: boolean
   sessions?: Array<{
     id: string
     filename: string
@@ -85,6 +86,7 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
   userId,
   date,
   locale = 'ko',
+  isGuestMode = false,
   sessions = [],
   sessionLines = []
 }) => {
@@ -96,18 +98,29 @@ export const AISummaryPanel: React.FC<AISummaryPanelProps> = ({
 
   const generateSummary = async (forceRegenerate = false) => {
     try {
-      console.log('[AISummaryPanel] Starting summary generation...', { userId, date, forceRegenerate })
+      console.log('[AISummaryPanel] Starting summary generation...', { userId, date, forceRegenerate, isGuestMode })
       setLoading(true)
       setError(null)
       setSummary('')
       setParsedData(null)
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary`, {
+      // 게스트 모드일 때는 다른 엔드포인트와 헤더 사용
+      const apiEndpoint = isGuestMode
+        ? `${process.env.NEXT_PUBLIC_API_URL}/api/guest/generate-summary`
+        : `${process.env.NEXT_PUBLIC_API_URL}/api/teams/generate-summary`
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+
+      // 게스트 모드가 아닐 때만 Authorization 헤더 추가
+      if (!isGuestMode) {
+        headers['Authorization'] = `Bearer ${localStorage.getItem('vibereview_token')}`
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('vibereview_token')}`,
-        },
+        headers,
         body: JSON.stringify({ userId, date, forceRegenerate }),
       })
 
